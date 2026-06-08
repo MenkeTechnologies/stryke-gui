@@ -96,3 +96,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
+
+  doc:
+    name: Doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Linux GUI deps (enigo + xcap)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libwayland-egl1 \
+            libpipewire-0.3-dev libspa-0.2-dev \
+            libegl-dev libgl1-mesa-dev libgles-dev libgbm-dev \
+            libxcb1-dev libxrandr-dev libxcb-randr0-dev \
+            libxinerama-dev libxcursor-dev libxi-dev \
+            libdbus-1-dev libudev-dev \
+            pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --locked

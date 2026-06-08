@@ -1,0 +1,337 @@
+# lib/GUI.stk — GUI automation for stryke (`use GUI`).
+#
+# Wraps the `stryke-gui-helper` Rust binary (enigo input + xcap capture)
+# and parses its JSON output. Provides a PyAutoGUI-equivalent surface:
+# mouse motion/buttons/wheel, keyboard press/type/hotkey, screen size +
+# bounds, pixel reads, and screenshots.
+#
+# Isolating the native input/display deps in the helper keeps the stryke
+# core binary slim and free of the X11/Wayland system libraries.
+#
+# Permissions mirror the underlying platform: macOS prompts once for
+# Accessibility (mouse/keyboard) and once for Screen Recording
+# (pixel/screenshot); Wayland needs the virtual-pointer + screenshot
+# portal; X11 and Windows have no gates.
+
+package GUI
+
+our $HELPER
+
+fn GUI::pkg_root {
+    my @parts = split "/", __FILE__
+    pop @parts
+    pop @parts
+    my $root = join "/", @parts
+    $root ne "" ? $root : "."
+}
+
+fn GUI::helper_path {
+    return $GUI::HELPER if defined $GUI::HELPER && -x $GUI::HELPER
+
+    if (exists $ENV{STRYKE_GUI_HELPER} && $ENV{STRYKE_GUI_HELPER} ne "") {
+        my $p = $ENV{STRYKE_GUI_HELPER}
+        die "stryke-gui: STRYKE_GUI_HELPER=$p is not an executable file" unless -x $p
+        $GUI::HELPER = $p
+        return $p
+    }
+
+    my $root = GUI::pkg_root()
+    for my $cand (
+        "$root/target/release/stryke-gui-helper",
+        "$root/target/debug/stryke-gui-helper",
+        "$root/bin/stryke-gui-helper",
+    ) {
+        if (-x $cand) {
+            $GUI::HELPER = $cand
+            return $cand
+        }
+    }
+
+    my $which = qx{command -v stryke-gui-helper 2>/dev/null}
+    chomp $which
+    if ($which ne "" && -x $which) {
+        $GUI::HELPER = $which
+        return $which
+    }
+
+    die "stryke-gui: helper binary not found.\n" .
+        "  Build it once with:  cd $root && cargo build --release\n" .
+        "  Or set STRYKE_GUI_HELPER=/path/to/stryke-gui-helper\n"
+}
+
+fn GUI::ensure_built {
+    my $root = GUI::pkg_root()
+    for my $cand ("$root/target/release/stryke-gui-helper",
+                  "$root/target/debug/stryke-gui-helper") {
+        return $cand if -x $cand
+    }
+    return GUI::helper_path() if exists $ENV{STRYKE_GUI_HELPER}
+
+    p "stryke-gui: building helper (cargo build --release)..."
+    my $rc = system "cd " . GUI::_shq($root) . " && cargo build --release"
+    die "stryke-gui: cargo build failed (rc=$rc)" if $rc != 0
+    GUI::helper_path()
+}
+
+# Single-quote shell-escape: wrap in '…' and replace embedded ' with '\'' .
+fn GUI::_shq ($s) {
+    my $t = $s
+    $t =~ s/'/'\\''/g
+    "'$t'"
+}
+
+fn GUI::version {
+    my $bin = GUI::_shq(GUI::helper_path())
+    my $v = qx{$bin --version 2>&1}
+    chomp $v
+    $v
+}
+
+# ── subprocess plumbing ──────────────────────────────────────────────
+
+# Build the leading `helper subcmd args...` argv. Subcommand tokens are
+# passed verbatim; only the caller-supplied values get shell-quoted.
+fn GUI::_argv ($parts) {
+    my @argv = (GUI::_shq(GUI::helper_path()))
+    push @argv, @$parts
+    \@argv
+}
+
+# Run argv as a fire-and-forget action. Dies on non-zero exit.
+fn GUI::_run ($parts) {
+    my $cmd = join " ", @{ GUI::_argv($parts) }
+    if ($ENV{STRYKE_GUI_DEBUG}) {
+        warn "DEBUG gui cmd: $cmd\n"
+    }
+    my $rc = system $cmd
+    die "stryke-gui: helper exited (" . ($rc >> 8) . ")" if $rc != 0
+    1
+}
+
+# Run argv and decode its single-line JSON stdout into a hashref/arrayref.
+fn GUI::_run_json ($parts) {
+    my $cmd = join " ", @{ GUI::_argv($parts) }
+    if ($ENV{STRYKE_GUI_DEBUG}) {
+        warn "DEBUG gui cmd: $cmd\n"
+    }
+    my $out = qx{$cmd}
+    die "stryke-gui: helper exited ($?)" if $? != 0
+    from_json $out
+}
+
+# ── mouse: position / size ───────────────────────────────────────────
+
+# Current cursor position → ($x, $y).
+fn GUI::mouse_pos {
+    my $o = GUI::_run_json(["mouse", "pos"])
+    ($o->{x}, $o->{y})
+}
+
+# Primary display dimensions → ($w, $h).
+fn GUI::screen_size {
+    my $o = GUI::_run_json(["screen", "size"])
+    ($o->{width}, $o->{height})
+}
+
+# Alias for screen_size (pyautogui's `size()` spelling).
+fn GUI::mouse_size {
+    GUI::screen_size()
+}
+
+# 1 if ($x, $y) is on the primary display, else 0.
+fn GUI::on_screen ($x, $y) {
+    my $o = GUI::_run_json(["screen", "on-screen", GUI::_shq($x), GUI::_shq($y)])
+    $o->{on_screen} ? 1 : 0
+}
+
+# ── mouse: motion ────────────────────────────────────────────────────
+
+# Absolute move to ($x, $y). Optional $duration seconds animates the path.
+fn GUI::mouse_move ($x, $y, $duration = 0) {
+    my @p = ("mouse", "move", GUI::_shq($x), GUI::_shq($y))
+    push @p, "--duration", GUI::_shq($duration) if $duration > 0
+    GUI::_run(\@p)
+}
+
+# Relative move by ($dx, $dy). Optional $duration seconds animates.
+fn GUI::mouse_move_rel ($dx, $dy, $duration = 0) {
+    my @p = ("mouse", "move-rel", GUI::_shq($dx), GUI::_shq($dy))
+    push @p, "--duration", GUI::_shq($duration) if $duration > 0
+    GUI::_run(\@p)
+}
+
+# Press-drag to ($x, $y). Optional $duration + $button ("left"/"right"/"middle").
+fn GUI::mouse_drag ($x, $y, $duration = 0, $button = "left") {
+    my @p = ("mouse", "drag", GUI::_shq($x), GUI::_shq($y))
+    push @p, "--duration", GUI::_shq($duration) if $duration > 0
+    push @p, "--button", GUI::_shq($button)
+    GUI::_run(\@p)
+}
+
+# Press-drag by ($dx, $dy).
+fn GUI::mouse_drag_rel ($dx, $dy, $duration = 0, $button = "left") {
+    my @p = ("mouse", "drag-rel", GUI::_shq($dx), GUI::_shq($dy))
+    push @p, "--duration", GUI::_shq($duration) if $duration > 0
+    push @p, "--button", GUI::_shq($button)
+    GUI::_run(\@p)
+}
+
+# ── mouse: buttons ───────────────────────────────────────────────────
+
+# Click at the current position, or at ($x, $y) if both are defined.
+# %opts: x, y, clicks (default 1), interval (default 0), button (default left).
+fn GUI::mouse_click (%opts) {
+    my @p = ("mouse", "click")
+    push @p, "--x", GUI::_shq($opts{x}) if defined $opts{x}
+    push @p, "--y", GUI::_shq($opts{y}) if defined $opts{y}
+    push @p, "--clicks", GUI::_shq($opts{clicks}) if defined $opts{clicks}
+    push @p, "--interval", GUI::_shq($opts{interval}) if defined $opts{interval}
+    push @p, "--button", GUI::_shq($opts{button}) if defined $opts{button}
+    GUI::_run(\@p)
+}
+
+fn GUI::_click_at ($sub, $x, $y, $button) {
+    my @p = ("mouse", $sub)
+    push @p, "--x", GUI::_shq($x) if defined $x
+    push @p, "--y", GUI::_shq($y) if defined $y
+    push @p, "--button", GUI::_shq($button) if defined $button
+    GUI::_run(\@p)
+}
+
+# Single right / middle click; optional ($x, $y) to move there first.
+fn GUI::mouse_right_click ($x = undef, $y = undef) {
+    GUI::_click_at("click", $x, $y, "right")
+}
+
+fn GUI::mouse_middle_click ($x = undef, $y = undef) {
+    GUI::_click_at("click", $x, $y, "middle")
+}
+
+# Double / triple click; optional ($x, $y) and $button.
+fn GUI::mouse_double_click ($x = undef, $y = undef, $button = "left") {
+    my @p = ("mouse", "click", "--clicks", "2")
+    push @p, "--x", GUI::_shq($x) if defined $x
+    push @p, "--y", GUI::_shq($y) if defined $y
+    push @p, "--button", GUI::_shq($button)
+    GUI::_run(\@p)
+}
+
+fn GUI::mouse_triple_click ($x = undef, $y = undef, $button = "left") {
+    my @p = ("mouse", "click", "--clicks", "3")
+    push @p, "--x", GUI::_shq($x) if defined $x
+    push @p, "--y", GUI::_shq($y) if defined $y
+    push @p, "--button", GUI::_shq($button)
+    GUI::_run(\@p)
+}
+
+# Press / release a mouse button without the opposite action.
+fn GUI::mouse_down ($button = "left") {
+    GUI::_run(["mouse", "down", "--button", GUI::_shq($button)])
+}
+
+fn GUI::mouse_up ($button = "left") {
+    GUI::_run(["mouse", "up", "--button", GUI::_shq($button)])
+}
+
+# ── mouse: wheel ─────────────────────────────────────────────────────
+
+# Vertical scroll by $clicks (positive = up). Optional ($x, $y) move first.
+fn GUI::mouse_scroll ($clicks, $x = undef, $y = undef) {
+    my @p = ("mouse", "scroll", GUI::_shq($clicks))
+    push @p, "--x", GUI::_shq($x) if defined $x
+    push @p, "--y", GUI::_shq($y) if defined $y
+    GUI::_run(\@p)
+}
+
+# Horizontal scroll by $clicks.
+fn GUI::mouse_hscroll ($clicks, $x = undef, $y = undef) {
+    my @p = ("mouse", "hscroll", GUI::_shq($clicks))
+    push @p, "--x", GUI::_shq($x) if defined $x
+    push @p, "--y", GUI::_shq($y) if defined $y
+    GUI::_run(\@p)
+}
+
+# ── keyboard ─────────────────────────────────────────────────────────
+
+# Press a named key $presses times with $interval seconds between presses.
+fn GUI::key_press ($name, $presses = 1, $interval = 0) {
+    my @p = ("key", "press", GUI::_shq($name))
+    push @p, "--presses", GUI::_shq($presses) if $presses != 1
+    push @p, "--interval", GUI::_shq($interval) if $interval > 0
+    GUI::_run(\@p)
+}
+
+# Hold a key down (no release) / release a held key.
+fn GUI::key_down ($name) {
+    GUI::_run(["key", "down", GUI::_shq($name)])
+}
+
+fn GUI::key_up ($name) {
+    GUI::_run(["key", "up", GUI::_shq($name)])
+}
+
+# Type a literal UTF-8 string. Optional $interval seconds between chars.
+fn GUI::key_type ($text, $interval = 0) {
+    my @p = ("key", "type", GUI::_shq($text))
+    push @p, "--interval", GUI::_shq($interval) if $interval > 0
+    GUI::_run(\@p)
+}
+
+# Chord: press keys in order, release in reverse. Accepts a list of names.
+fn GUI::key_hotkey (@keys) {
+    die "GUI::key_hotkey needs at least one key" if @keys == 0
+    my @p = ("key", "hotkey")
+    push @p, map { GUI::_shq($_) } @keys
+    GUI::_run(\@p)
+}
+
+# Every recognized key name → list of strings.
+fn GUI::keyboard_keys {
+    my $arr = GUI::_run_json(["key", "keys"])
+    @$arr
+}
+
+# ── pixel + screenshot ───────────────────────────────────────────────
+
+# RGB color at ($x, $y) → ($r, $g, $b).
+fn GUI::pixel ($x, $y) {
+    my $o = GUI::_run_json(["pixel", GUI::_shq($x), GUI::_shq($y)])
+    ($o->{r}, $o->{g}, $o->{b})
+}
+
+# 1 if the pixel at ($x, $y) matches $rgb (arrayref [r,g,b]) within
+# $tolerance per channel, else 0.
+fn GUI::pixel_matches_color ($x, $y, $rgb, $tolerance = 0) {
+    my @p = ("pixel-match", GUI::_shq($x), GUI::_shq($y),
+             GUI::_shq($rgb->[0]), GUI::_shq($rgb->[1]), GUI::_shq($rgb->[2]))
+    push @p, "--tolerance", GUI::_shq($tolerance) if $tolerance != 0
+    my $o = GUI::_run_json(\@p)
+    $o->{match} ? 1 : 0
+}
+
+# Capture the primary display.
+#   GUI::screenshot()           → ($w, $h, \@rgba_bytes)
+#   GUI::screenshot("foo.png")  → writes PNG, returns the path.
+fn GUI::screenshot ($path = undef) {
+    if (defined $path) {
+        my $o = GUI::_run_json(["screenshot", "--output", GUI::_shq($path)])
+        return $o->{path}
+    }
+    my $o = GUI::_run_json(["screenshot"])
+    ($o->{width}, $o->{height}, $o->{rgba})
+}
+
+# Capture an ($l, $t, $w, $h) region of the primary display.
+#   GUI::screenshot_region(L, T, W, H)         → ($w, $h, \@rgba_bytes)
+#   GUI::screenshot_region(L, T, W, H, "p.png") → writes PNG, returns path.
+fn GUI::screenshot_region ($l, $t, $w, $h, $path = undef) {
+    my @region = ("--region", GUI::_shq($l), GUI::_shq($t), GUI::_shq($w), GUI::_shq($h))
+    if (defined $path) {
+        my $o = GUI::_run_json(["screenshot", @region, "--output", GUI::_shq($path)])
+        return $o->{path}
+    }
+    my $o = GUI::_run_json(["screenshot", @region])
+    ($o->{width}, $o->{height}, $o->{rgba})
+}
+
+1

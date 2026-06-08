@@ -1,0 +1,39 @@
+# t/test_gui.stk — plumbing tests for the stryke `gui` package.
+#
+# Exercises argv build + JSON parse without needing input/screen
+# permissions: `key keys` (no enigo init) and `--version`. Skips cleanly
+# when the helper binary isn't built.
+#
+# The mouse/keyboard/pixel/screenshot ops themselves need OS permission
+# (macOS Accessibility + Screen Recording, Wayland portals), so they are
+# not asserted here — they can't run unattended in CI.
+
+require "./lib/GUI.stk"
+
+my $have_helper = eval { GUI::helper_path(); 1 }
+unless ($have_helper) {
+    p "1..0 # SKIP helper not built — run `cargo build --release` first"
+    exit 0
+}
+
+p "1..4"
+
+# 1. version string is non-empty and names the helper.
+my $v = GUI::version()
+if ($v =~ /stryke-gui-helper/) { p "ok 1 - version reports helper name" }
+else { p "not ok 1 - version = '$v'" }
+
+# 2. keyboard_keys returns a non-trivial list.
+my @keys = GUI::keyboard_keys()
+if (@keys > 100) { p "ok 2 - keyboard_keys returns " . scalar(@keys) . " names" }
+else { p "not ok 2 - keyboard_keys returned " . scalar(@keys) }
+
+# 3. the list contains well-known names.
+my %seen = map { $_ => 1 } @keys
+if ($seen{enter} && $seen{shift} && $seen{f1}) { p "ok 3 - contains enter/shift/f1" }
+else { p "not ok 3 - missing expected key names" }
+
+# 4. function keys f1..f24 are all present.
+my @fkeys = grep { /^f\d+$/ } @keys
+if (@fkeys >= 24) { p "ok 4 - " . scalar(@fkeys) . " function keys present" }
+else { p "not ok 4 - only " . scalar(@fkeys) . " function keys" }

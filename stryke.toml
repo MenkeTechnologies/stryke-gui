@@ -1,0 +1,19 @@
+[package]
+name = "gui"
+version = "0.1.0"
+description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. Opt-in package tier; keeps the stryke core binary slim and free of X11/Wayland deps."
+authors = ["MenkeTechnologies"]
+license = "MIT"
+repository = "https://github.com/MenkeTechnologies/stryke-gui"
+edition = "2026"
+
+[bin]
+gui = "bin/gui.stk"
+gui-build = "bin/gui-build.stk"
+
+[scripts]
+build = "cargo build --release"
+build-debug = "cargo build"
+clean = "cargo clean"
+test = "s test t/"
+install = "s pkg install -g ."

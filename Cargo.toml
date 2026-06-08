@@ -1,0 +1,37 @@
+[package]
+name = "stryke-gui-helper"
+version = "0.1.0"
+edition = "2021"
+description = "GUI automation bridge binary for the stryke `gui` package"
+authors = ["MenkeTechnologies"]
+license = "MIT"
+repository = "https://github.com/MenkeTechnologies/stryke-gui"
+homepage = "https://menketechnologies.github.io/stryke-gui/"
+publish = false
+
+[[bin]]
+name = "stryke-gui-helper"
+path = "src/main.rs"
+
+[dependencies]
+# enigo = mouse + keyboard synthesis; xcap = screen capture / pixel reads.
+# These link against the platform input/display stack (macOS CGEvent +
+# ScreenCaptureKit, X11 XTest + XGetImage, Wayland virtual-pointer +
+# portal, Win32 SendInput + GDI). Isolating them in this helper keeps the
+# stryke core binary free of X11/Wayland system-lib requirements.
+enigo = "0.6"
+xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+clap = { version = "4", default-features = false, features = [
+    "std", "derive", "help", "usage", "error-context",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

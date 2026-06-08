@@ -575,4 +575,255 @@ mod tests {
     fn parse_key_yen_is_unicode_passthrough() {
         assert!(matches!(parse_key("yen").unwrap(), Key::Unicode('¥')));
     }
+
+    #[test]
+    fn parse_key_empty_string_errors() {
+        // 0-char input is neither a known name nor a single-char unicode
+        // fallback. Must error so a `gui key press ""` typo surfaces.
+        assert!(parse_key("").is_err());
+    }
+
+    #[test]
+    fn parse_key_modifier_left_right_distinct() {
+        // pyautogui semantics: shift / shiftleft / shiftright all reach
+        // enigo's distinct variants, not collapsed to one.
+        assert!(matches!(parse_key("shift").unwrap(), Key::Shift));
+        assert!(matches!(parse_key("shiftleft").unwrap(), Key::LShift));
+        assert!(matches!(parse_key("shiftright").unwrap(), Key::RShift));
+        assert!(matches!(parse_key("ctrl").unwrap(), Key::Control));
+        assert!(matches!(parse_key("ctrlleft").unwrap(), Key::LControl));
+        assert!(matches!(parse_key("ctrlright").unwrap(), Key::RControl));
+    }
+
+    #[test]
+    fn parse_key_alt_option_aliases_collapse() {
+        // pyautogui parity: alt == option on every platform.
+        assert!(matches!(parse_key("alt").unwrap(), Key::Alt));
+        assert!(matches!(parse_key("option").unwrap(), Key::Alt));
+    }
+
+    #[test]
+    fn parse_key_escape_and_delete_aliases() {
+        assert!(matches!(parse_key("escape").unwrap(), Key::Escape));
+        assert!(matches!(parse_key("esc").unwrap(), Key::Escape));
+        assert!(matches!(parse_key("delete").unwrap(), Key::Delete));
+        assert!(matches!(parse_key("del").unwrap(), Key::Delete));
+    }
+
+    #[test]
+    fn parse_key_numpad_arith_keys() {
+        assert!(matches!(parse_key("add").unwrap(), Key::Add));
+        assert!(matches!(parse_key("subtract").unwrap(), Key::Subtract));
+        assert!(matches!(parse_key("multiply").unwrap(), Key::Multiply));
+        assert!(matches!(parse_key("divide").unwrap(), Key::Divide));
+        assert!(matches!(parse_key("decimal").unwrap(), Key::Decimal));
+    }
+
+    #[test]
+    fn parse_key_media_keys() {
+        assert!(matches!(parse_key("volumeup").unwrap(), Key::VolumeUp));
+        assert!(matches!(parse_key("volumedown").unwrap(), Key::VolumeDown));
+        assert!(matches!(parse_key("volumemute").unwrap(), Key::VolumeMute));
+        // playpause and mediaplay both collapse to MediaPlayPause.
+        assert!(matches!(
+            parse_key("playpause").unwrap(),
+            Key::MediaPlayPause
+        ));
+        assert!(matches!(
+            parse_key("mediaplay").unwrap(),
+            Key::MediaPlayPause
+        ));
+        assert!(matches!(
+            parse_key("nexttrack").unwrap(),
+            Key::MediaNextTrack
+        ));
+        assert!(matches!(
+            parse_key("prevtrack").unwrap(),
+            Key::MediaPrevTrack
+        ));
+    }
+
+    /// Every name guaranteed to parse on every supported platform via
+    /// `parse_key_common`. New additions to that arm should grow this list
+    /// too — the test is the contract.
+    const CROSS_PLATFORM_NAMES: &[&str] = &[
+        // whitespace + edit
+        "tab",
+        "enter",
+        "return",
+        "space",
+        "backspace",
+        "delete",
+        "del",
+        "escape",
+        "esc",
+        "numpadenter",
+        // modifiers
+        "shift",
+        "shiftleft",
+        "shiftright",
+        "ctrl",
+        "control",
+        "ctrlleft",
+        "ctrlright",
+        "alt",
+        "option",
+        "meta",
+        "cmd",
+        "command",
+        "super",
+        // arrows + nav
+        "up",
+        "down",
+        "left",
+        "right",
+        "home",
+        "end",
+        "pageup",
+        "pagedown",
+        "pgup",
+        "pgdn",
+        // locks + system
+        "capslock",
+        "help",
+        // function keys F1..F20
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12",
+        "f13",
+        "f14",
+        "f15",
+        "f16",
+        "f17",
+        "f18",
+        "f19",
+        "f20",
+        // numpad
+        "num0",
+        "num1",
+        "num2",
+        "num3",
+        "num4",
+        "num5",
+        "num6",
+        "num7",
+        "num8",
+        "num9",
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "decimal",
+        // media
+        "volumeup",
+        "volumedown",
+        "volumemute",
+        "playpause",
+        "mediaplay",
+        "nexttrack",
+        "prevtrack",
+        // unicode passthrough
+        "yen",
+    ];
+
+    #[test]
+    fn parse_key_cross_platform_names_all_parse() {
+        for n in CROSS_PLATFORM_NAMES {
+            parse_key(n).unwrap_or_else(|e| panic!("cross-platform name {n:?} failed: {e}"));
+        }
+    }
+
+    #[test]
+    fn cross_platform_names_are_subset_of_public_table() {
+        // KEYBOARD_KEY_NAMES is what `gui key keys` prints; the
+        // cross-platform set used in the test above must be a subset of it
+        // so we never test names that aren't documented.
+        let table: HashSet<&str> = KEYBOARD_KEY_NAMES.iter().copied().collect();
+        for n in CROSS_PLATFORM_NAMES {
+            assert!(table.contains(*n), "{n} missing from KEYBOARD_KEY_NAMES");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parse_key_macos_specific_names_parse() {
+        // Names enigo only exposes on macOS. If any of these stop parsing,
+        // the platform arm regressed.
+        for n in [
+            "fn",
+            "function",
+            "rcommand",
+            "rcmd",
+            "eject",
+            "power",
+            "brightnessup",
+            "brightnessdown",
+            "launchpad",
+            "missioncontrol",
+        ] {
+            parse_key(n).unwrap_or_else(|e| panic!("macOS name {n:?} failed: {e}"));
+        }
+    }
+
+    #[cfg(any(target_os = "windows", all(unix, not(target_os = "macos"))))]
+    #[test]
+    fn parse_key_non_macos_specific_names_parse() {
+        // Names enigo gates behind cfg(any(windows, all(unix, not(macos)))).
+        for n in [
+            "f21",
+            "f22",
+            "f23",
+            "f24",
+            "printscreen",
+            "prntscrn",
+            "prtsc",
+            "prtscr",
+            "insert",
+            "numlock",
+            "pause",
+            "stop",
+        ] {
+            parse_key(n).unwrap_or_else(|e| panic!("non-macOS name {n:?} failed: {e}"));
+        }
+    }
+
+    #[test]
+    fn hotkey_empty_names_errors_before_gui_init() {
+        // Empty check runs before make_enigo(), so this is safe on a
+        // headless CI runner with no display.
+        let err = hotkey(&[], 0.0).unwrap_err();
+        assert!(err.to_string().contains("at least one key"));
+    }
+
+    #[test]
+    fn hotkey_unknown_key_errors_before_gui_init() {
+        // parse_key fails inside the `.collect()` before make_enigo runs.
+        let err = hotkey(&["bogus".to_string()], 0.0).unwrap_err();
+        assert!(err.to_string().contains("unrecognized key name"));
+    }
+
+    #[test]
+    fn press_unknown_key_errors_before_gui_init() {
+        let err = press("notakey", 1, 0.0).unwrap_err();
+        assert!(err.to_string().contains("unrecognized key name"));
+    }
+
+    #[test]
+    fn down_unknown_key_errors_before_gui_init() {
+        assert!(down("notakey").is_err());
+    }
+
+    #[test]
+    fn up_unknown_key_errors_before_gui_init() {
+        assert!(up("notakey").is_err());
+    }
 }

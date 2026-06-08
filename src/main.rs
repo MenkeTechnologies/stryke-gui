@@ -472,4 +472,262 @@ mod tests {
     fn cli_rejects_unknown_top_level_subcommand() {
         assert!(Cli::try_parse_from(["stryke-gui-helper", "bogus"]).is_err());
     }
+
+    #[test]
+    fn cli_parses_mouse_move_defaults() {
+        let cli =
+            Cli::try_parse_from(["stryke-gui-helper", "mouse", "move", "400", "300"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Move { x, y, duration }) => {
+                assert_eq!((x, y), (400, 300));
+                assert_eq!(duration, 0.0);
+            }
+            other => panic!("expected mouse move, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_move_with_duration() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "mouse",
+            "move",
+            "10",
+            "20",
+            "--duration",
+            "0.5",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Move { duration, .. }) => assert_eq!(duration, 0.5),
+            other => panic!("expected mouse move, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_move_rel() {
+        // Positives don't need any escape.
+        let cli =
+            Cli::try_parse_from(["stryke-gui-helper", "mouse", "move-rel", "5", "7"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::MoveRel { dx, dy, .. }) => assert_eq!((dx, dy), (5, 7)),
+            other => panic!("expected mouse move-rel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_negative_positional_needs_double_dash_separator() {
+        // Clap treats a leading `-` as a short flag, so a bare negative
+        // positional (`mouse move-rel -5 7`) fails — callers must pass
+        // `-- -5 7`. This pins the actual contract the .stk wrappers and
+        // shell users rely on.
+        assert!(
+            Cli::try_parse_from(["stryke-gui-helper", "mouse", "move-rel", "-5", "7"]).is_err()
+        );
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "move-rel", "--", "-5", "7"])
+            .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::MoveRel { dx, dy, .. }) => assert_eq!((dx, dy), (-5, 7)),
+            other => panic!("expected mouse move-rel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_drag_default_button_is_left() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "drag", "50", "60"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Drag {
+                x,
+                y,
+                duration,
+                button,
+            }) => {
+                assert_eq!((x, y), (50, 60));
+                assert_eq!(duration, 0.0);
+                assert_eq!(button, "left");
+            }
+            other => panic!("expected mouse drag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_drag_rel_with_button() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "mouse",
+            "drag-rel",
+            "10",
+            "20",
+            "--button",
+            "right",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::DragRel { dx, dy, button, .. }) => {
+                assert_eq!((dx, dy), (10, 20));
+                assert_eq!(button, "right");
+            }
+            other => panic!("expected mouse drag-rel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_scroll() {
+        // Positive scroll (wheel up). Negatives need `--` (see
+        // `cli_negative_positional_needs_double_dash_separator`).
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "scroll", "3"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Scroll { clicks, x, y }) => {
+                assert_eq!(clicks, 3);
+                assert!(x.is_none());
+                assert!(y.is_none());
+            }
+            other => panic!("expected mouse scroll, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_hscroll_with_anchor() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "mouse",
+            "hscroll",
+            "5",
+            "--x",
+            "100",
+            "--y",
+            "200",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Hscroll { clicks, x, y }) => {
+                assert_eq!(clicks, 5);
+                assert_eq!(x, Some(100));
+                assert_eq!(y, Some(200));
+            }
+            other => panic!("expected mouse hscroll, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_down_and_up() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "down"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Down { button }) => assert_eq!(button, "left"),
+            other => panic!("expected mouse down, got {other:?}"),
+        }
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "up", "--button", "middle"])
+            .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Up { button }) => assert_eq!(button, "middle"),
+            other => panic!("expected mouse up, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_key_type_with_interval() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "key",
+            "type",
+            "hello world",
+            "--interval",
+            "0.05",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Key(KeyCmd::Type { text, interval }) => {
+                assert_eq!(text, "hello world");
+                assert_eq!(interval, 0.05);
+            }
+            other => panic!("expected key type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_key_press_with_presses_and_interval() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "key",
+            "press",
+            "enter",
+            "--presses",
+            "4",
+            "--interval",
+            "0.2",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Key(KeyCmd::Press {
+                name,
+                presses,
+                interval,
+            }) => {
+                assert_eq!(name, "enter");
+                assert_eq!(presses, 4);
+                assert_eq!(interval, 0.2);
+            }
+            other => panic!("expected key press, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_key_down_and_up() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "key", "down", "shift"]).unwrap();
+        match cli.cmd {
+            Top::Key(KeyCmd::Down { name }) => assert_eq!(name, "shift"),
+            other => panic!("expected key down, got {other:?}"),
+        }
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "key", "up", "shift"]).unwrap();
+        match cli.cmd {
+            Top::Key(KeyCmd::Up { name }) => assert_eq!(name, "shift"),
+            other => panic!("expected key up, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_key_keys() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "key", "keys"]).unwrap();
+        assert!(matches!(cli.cmd, Top::Key(KeyCmd::Keys)));
+    }
+
+    #[test]
+    fn cli_parses_screen_size_and_on_screen() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "screen", "size"]).unwrap();
+        assert!(matches!(cli.cmd, Top::Screen(ScreenCmd::Size)));
+        let cli =
+            Cli::try_parse_from(["stryke-gui-helper", "screen", "on-screen", "10", "20"]).unwrap();
+        match cli.cmd {
+            Top::Screen(ScreenCmd::OnScreen { x, y }) => assert_eq!((x, y), (10, 20)),
+            other => panic!("expected screen on-screen, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_screenshot_bare() {
+        // No --region, no --output: full-display raw capture path.
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "screenshot"]).unwrap();
+        match cli.cmd {
+            Top::Screenshot { region, output } => {
+                assert!(region.is_none());
+                assert!(output.is_none());
+            }
+            other => panic!("expected screenshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_screenshot_output_short_and_long_flag() {
+        // Both `-o` and `--output` must accept a path.
+        for flag in ["-o", "--output"] {
+            let cli = Cli::try_parse_from(["stryke-gui-helper", "screenshot", flag, "/tmp/x.png"])
+                .unwrap();
+            match cli.cmd {
+                Top::Screenshot { output, .. } => {
+                    assert_eq!(output.as_deref(), Some("/tmp/x.png"));
+                }
+                other => panic!("expected screenshot, got {other:?}"),
+            }
+        }
+    }
 }

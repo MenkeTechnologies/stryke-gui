@@ -148,3 +148,33 @@ pub fn scroll(clicks: i32, x: Option<i32>, y: Option<i32>, horizontal: bool) -> 
     e.scroll(clicks, axis)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn point_serializes_with_x_y_keys() {
+        // The .stk wrappers parse this JSON with from_json — the field
+        // names are part of the contract, not implementation detail.
+        let p = Point { x: 12, y: -8 };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(v["x"], 12);
+        assert_eq!(v["y"], -8);
+        assert_eq!(v.as_object().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn size_serializes_with_width_height_keys() {
+        let s = Size {
+            width: 1920,
+            height: 1080,
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(v["width"], 1920);
+        assert_eq!(v["height"], 1080);
+        assert_eq!(v.as_object().unwrap().len(), 2);
+    }
+}

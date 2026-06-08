@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="stryke-gui — GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL. PyAutoGUI-equivalent surface for stryke: mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, and screenshots. Opt-in package — the native input/display deps (enigo, xcap) live in a sidecar binary so stryke core stays slim and free of X11/Wayland system libraries.">
+  <title>stryke-gui — Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&amp;family=Share+Tech+Mono&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="hud-static.css">
+  <link rel="stylesheet" href="tutorial.css">
+  <style>
+    .tutorial-main { max-width: 68rem; }
+    .docs-build-line {
+      margin: 0.35rem 0 0;
+      font-family: 'Share Tech Mono', ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.03em;
+      max-width: 42rem;
+      opacity: 0.75;
+    }
+    .hub-scheme-strip {
+      border-bottom: 1px dashed var(--border);
+      background: color-mix(in srgb, var(--bg-secondary) 85%, transparent);
+      padding: 0.55rem 1.5rem 0.65rem;
+      position: relative;
+    }
+    .hub-scheme-strip-inner {
+      max-width: 68rem;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+    .hub-scheme-strip .hud-scheme-label {
+      flex: 0 0 auto;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      text-align: left;
+    }
+    .hub-scheme-strip .scheme-grid {
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+    @media (max-width: 720px) {
+      .hub-scheme-strip-inner { flex-direction: column; align-items: stretch; }
+      .hub-scheme-strip .scheme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .example-tbl { width: 100%; border-collapse: collapse; margin: 0.6rem 0; font-size: 12.5px; }
+    .example-tbl td {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      vertical-align: top;
+      color: var(--text-dim);
+    }
+    .example-tbl td:first-child { width: 40%; color: var(--cyan); font-family: 'Share Tech Mono', monospace; }
+    .example-tbl td code { color: var(--accent-light); background: var(--bg); padding: 1px 5px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app tutorial-app" id="docsApp">
+    <div class="crt-scanline" id="crtH" aria-hidden="true"></div>
+    <div class="crt-scanline-v" id="crtV" aria-hidden="true"></div>
+
+    <header class="tutorial-header">
+      <div class="tutorial-header-inner">
+        <div>
+          <h1 class="tutorial-brand">// STRYKE-GUI &mdash; GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL</h1>
+          <nav class="tutorial-crumbs" aria-label="Breadcrumb">
+            <span class="current">Docs</span>
+            <span class="sep">/</span>
+            <a href="report.html">Engineering report</a>
+            <span class="sep">/</span>
+            <a href="https://github.com/MenkeTechnologies/stryke-gui" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <span class="sep">/</span>
+            <a href="https://github.com/MenkeTechnologies/strykelang" target="_blank" rel="noopener noreferrer">strykelang</a>
+            <span class="sep">/</span>
+            <a href="https://github.com/MenkeTechnologies/MenkeTechnologiesMeta" target="_blank" rel="noopener noreferrer">Meta</a>
+          </nav>
+          <p class="docs-build-line">stryke package · CLI launcher <code>gui</code> · Rust helper <code>stryke-gui-helper</code> · opt-in (kept out of stryke core)</p>
+        </div>
+        <div class="tutorial-toolbar">
+          <button type="button" class="btn btn-secondary" id="btnTheme" title="Toggle light/dark">Theme</button>
+          <button type="button" class="btn btn-secondary active" id="btnCrt" title="CRT scanline overlay">CRT</button>
+          <button type="button" class="btn btn-secondary active" id="btnNeon" title="Neon border pulse">Neon</button>
+          <a class="btn btn-secondary" href="report.html">Report</a>
+          <a class="btn btn-secondary" href="https://github.com/MenkeTechnologies/stryke-gui" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="btn btn-secondary" href="https://github.com/MenkeTechnologies/stryke-gui/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="hub-scheme-strip">
+      <div class="hub-scheme-strip-inner">
+        <span class="hud-scheme-label">// Color scheme</span>
+        <div class="scheme-grid" id="hudSchemeGrid"></div>
+      </div>
+    </div>
+
+    <main class="tutorial-main">
+      <h2 class="tutorial-title"><span class="step-hash">&gt;_</span>STRYKE-GUI</h2>
+      <p class="tutorial-subtitle"><strong>PyAutoGUI, one stryke pipe away.</strong> GUI automation for stryke — mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, and screenshots. A PyAutoGUI-equivalent surface, opt-in as a package so the stryke core binary stays slim and free of X11/Wayland system libraries. The stryke side is a thin shell-out wrapper; the native input/display code (<code>enigo</code> + <code>xcap</code>) lives in the <code>stryke-gui-helper</code> sidecar.</p>
+
+      <section class="tutorial-section">
+        <h2>Install</h2>
+        <p>Linux only — install the system libraries <code>enigo</code> / <code>xcap</code> link against first (macOS and Windows need nothing extra):</p>
+<pre>sudo apt-get install -y libwayland-dev libxkbcommon-dev libxcb1-dev \
+  libxrandr-dev libxi-dev libxcursor-dev libdbus-1-dev pkg-config</pre>
+        <p>Then build the helper and register the CLIs:</p>
+<pre>cd ~/RustroverProjects/stryke-gui
+cargo build --release            # produces target/release/stryke-gui-helper
+s pkg install -g .               # installs `gui` and `gui-build` CLIs
+
+# one-liner
+make install
+
+# verify
+gui --help</pre>
+        <p>After install, <code>gui</code> is on PATH (assuming <code>~/.stryke/bin/</code> is on PATH). The stryke library is auto-discoverable to any project that depends on the package via <code>[deps] gui = { path = "..." }</code> or, when published, by name.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Quick start</h2>
+<pre>use GUI
+
+# where is the cursor, how big is the screen?
+my ($x, $y) = GUI::mouse_pos()
+my ($w, $h) = GUI::screen_size()
+p "cursor ($x, $y) on ${w}x${h}"
+
+# move + click + type
+GUI::mouse_move(int($w / 2), int($h / 2), 0.3)   # animated over 0.3s
+GUI::mouse_click()
+GUI::key_type("hello from stryke", 0.05)
+GUI::key_hotkey("cmd", "s")                       # &#x2318;S  (ctrl on Linux/Win)
+
+# read a pixel, grab a screenshot
+my ($r, $g, $b) = GUI::pixel(100, 100)
+my $path = GUI::screenshot("/tmp/shot.png")</pre>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>CLI: <code>gui</code></h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td>cursor position</td><td><code>gui mouse pos</code> &mdash; <code>{"x":...,"y":...}</code></td></tr>
+            <tr><td>primary display size</td><td><code>gui screen size</code> &mdash; <code>{"width":...,"height":...}</code></td></tr>
+            <tr><td>tweened absolute move</td><td><code>gui mouse move 400 300 --duration 0.5</code></td></tr>
+            <tr><td>type a string with inter-char delay</td><td><code>gui key type "hello" --interval 0.05</code></td></tr>
+            <tr><td>chord hotkey</td><td><code>gui key hotkey ctrl t</code></td></tr>
+            <tr><td>read a single pixel</td><td><code>gui pixel 100 100</code> &mdash; <code>{"r":..,"g":..,"b":..}</code></td></tr>
+            <tr><td>write a PNG to disk</td><td><code>gui screenshot --output /tmp/s.png</code></td></tr>
+            <tr><td>build the helper</td><td><code>gui build</code> &mdash; <code>cargo build --release</code></td></tr>
+          </tbody>
+        </table>
+        <p>The full flag matrix lives in the <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-cli-gui">README &laquo;CLI: <code>gui</code>&raquo; section</a>.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Why a package, not a builtin</h2>
+        <p>The <code>enigo</code> (input) and <code>xcap</code> (capture) crates link against the platform input/display stack. On Linux that means the X11 <strong>and</strong> Wayland client libraries plus xkb, dbus, and PipeWire &mdash; a stack of <code>-dev</code> packages that would otherwise have to be installed before <code>cargo install strykelang</code> could even build. Baking them into core forces that cost on every user, GUI or not.</p>
+        <p><code>stryke-gui</code> follows the <code>stryke-aws</code> shape: a thin stryke library spawns a small Rust helper binary (<code>stryke-gui-helper</code>) per call and parses JSON over the pipe. The native deps live only here, opt-in, so the stryke core install needs zero external system libraries.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Helper protocol</h2>
+        <p>The <code>.stk</code> library shells out to <code>stryke-gui-helper</code> and parses its output. <strong>Action</strong> subcommands (move, click, type, &hellip;) exit <code>0</code> on success. <strong>Query</strong> subcommands print a single JSON line to stdout:</p>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>mouse pos</code></td><td><code>{"x","y"}</code></td></tr>
+            <tr><td><code>screen size</code></td><td><code>{"width","height"}</code></td></tr>
+            <tr><td><code>screen on-screen X Y</code></td><td><code>{"on_screen":bool}</code></td></tr>
+            <tr><td><code>pixel X Y</code></td><td><code>{"r","g","b"}</code></td></tr>
+            <tr><td><code>pixel-match X Y R G B [--tolerance N]</code></td><td><code>{"match":bool}</code></td></tr>
+            <tr><td><code>screenshot</code> (no <code>--output</code>)</td><td><code>{"width","height","rgba":[…]}</code></td></tr>
+            <tr><td><code>key keys</code></td><td>JSON array of recognized key names</td></tr>
+          </tbody>
+        </table>
+        <p>Set <code>STRYKE_GUI_DEBUG=1</code> to log each helper command to stderr. Set <code>STRYKE_GUI_HELPER=/path/to/stryke-gui-helper</code> to override binary discovery.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Permissions</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td>macOS</td><td>First mouse/keyboard call prompts for <strong>Accessibility</strong>; first pixel/screenshot call prompts for <strong>Screen Recording</strong> (System Settings &rarr; Privacy &amp; Security). One-time grants for the terminal app running <code>s</code>.</td></tr>
+            <tr><td>Wayland (Linux)</td><td>Requires the <code>wlroots-virtual-pointer</code> protocol (mouse/keyboard) and the <code>org.freedesktop.portal.Screenshot</code> portal (pixel/screen).</td></tr>
+            <tr><td>X11 (Linux), Windows</td><td>No permission gates.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Examples</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td>read-only display + pointer introspection</td><td><code>s examples/gui_screen_info.stk</code></td></tr>
+            <tr><td>animate the cursor in a circle</td><td><code>s examples/gui_mouse_circle.stk</code></td></tr>
+            <tr><td>typewriter effect via key_type</td><td><code>s examples/gui_typewriter.stk</code></td></tr>
+            <tr><td>chord key combos</td><td><code>s examples/gui_hotkey.stk</code></td></tr>
+            <tr><td>press-drag-release</td><td><code>s examples/gui_drag.stk</code></td></tr>
+            <tr><td>wheel events</td><td><code>s examples/gui_scroll_demo.stk</code></td></tr>
+            <tr><td>sample pixel colors</td><td><code>s examples/gui_pixel_probe.stk</code></td></tr>
+            <tr><td>full + region capture</td><td><code>s examples/gui_screenshot.stk</code></td></tr>
+            <tr><td>keep a session active</td><td><code>s examples/activity_maintainer.stk</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Layout</h2>
+<pre>stryke-gui/
+&#9500;&#9472;&#9472; stryke.toml            # stryke package manifest (name = `gui`)
+&#9500;&#9472;&#9472; Cargo.toml             # stryke-gui-helper binary manifest (publish = false)
+&#9500;&#9472;&#9472; src/
+&#9474;   &#9500;&#9472;&#9472; main.rs            # clap CLI + dispatch
+&#9474;   &#9500;&#9472;&#9472; common.rs          # enigo init, button parse, JSON output
+&#9474;   &#9500;&#9472;&#9472; mouse.rs           # motion / buttons / wheel / size / pos
+&#9474;   &#9500;&#9472;&#9472; keyboard.rs        # key-name table + press / type / hotkey
+&#9474;   &#9492;&#9472;&#9472; capture.rs         # pixel + screenshot (xcap)
+&#9500;&#9472;&#9472; lib/GUI.stk            # stryke wrappers (shell out + parse JSON)
+&#9500;&#9472;&#9472; bin/gui.stk            # `gui` CLI launcher
+&#9500;&#9472;&#9472; bin/gui-build.stk      # `gui-build` helper-build launcher
+&#9500;&#9472;&#9472; examples/              # runnable .stk demos
+&#9500;&#9472;&#9472; t/test_gui.stk         # plumbing tests
+&#9500;&#9472;&#9472; Makefile               # `make install` builds + installs
+&#9492;&#9472;&#9472; docs/                  # this site (GitHub Pages)</pre>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Sibling packages</h2>
+        <p>Part of the stryke connector family. Browse the others via the <a href="https://github.com/MenkeTechnologies/MenkeTechnologiesMeta">MenkeTechnologiesMeta</a> umbrella repo:</p>
+        <ul>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-gui">stryke-gui</a> &mdash; mouse / keyboard / screen / pixel / screenshot (this package)</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-arrow">stryke-arrow</a> &mdash; Apache Arrow / Parquet / Feather / arrow-CSV/JSON</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-aws">stryke-aws</a> &mdash; S3, DynamoDB, SQS, Lambda, STS</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-docker">stryke-docker</a> &mdash; Docker daemon API</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-duckdb">stryke-duckdb</a> &mdash; embedded DuckDB</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-gcp">stryke-gcp</a> &mdash; Cloud Storage + Pub/Sub</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-grpc">stryke-grpc</a> &mdash; reflection-based gRPC client</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-k8s">stryke-k8s</a> &mdash; Kubernetes</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-kafka">stryke-kafka</a> &mdash; Apache Kafka</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-mongo">stryke-mongo</a> &mdash; MongoDB</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-mysql">stryke-mysql</a> &mdash; MySQL / MariaDB</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-parquet">stryke-parquet</a> &mdash; Parquet file inspector</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-postgres">stryke-postgres</a> &mdash; PostgreSQL</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-redis">stryke-redis</a> &mdash; Redis / Valkey</li>
+          <li><a href="https://github.com/MenkeTechnologies/stryke-spark">stryke-spark</a> &mdash; Spark Connect (no JVM)</li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+  <script src="hud-theme.js"></script>
+</body>
+</html>

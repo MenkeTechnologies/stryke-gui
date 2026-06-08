@@ -287,3 +287,189 @@ fn screen_dispatch(c: ScreenCmd) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn region_tuple_none_passes_through() {
+        assert!(region_tuple(&None).is_none());
+    }
+
+    #[test]
+    fn region_tuple_valid_region_unchanged() {
+        let r = region_tuple(&Some(vec![10, 20, 100, 200])).unwrap();
+        assert_eq!(r, (10, 20, 100, 200));
+    }
+
+    #[test]
+    fn region_tuple_clamps_negative_size_to_zero() {
+        // W/H are u32 — a negative input must clamp, not wrap to a giant
+        // value via `as u32`. Catches the classic sign-cast footgun.
+        let r = region_tuple(&Some(vec![0, 0, -5, -7])).unwrap();
+        assert_eq!(r, (0, 0, 0, 0));
+    }
+
+    #[test]
+    fn region_tuple_preserves_negative_offsets() {
+        // L/T are i32 and *do* allow negatives so callers can clip into
+        // off-screen regions; downstream `capture` clamps with `.max(0)`.
+        let r = region_tuple(&Some(vec![-3, -4, 50, 60])).unwrap();
+        assert_eq!(r, (-3, -4, 50, 60));
+    }
+
+    #[test]
+    fn cli_definition_is_internally_consistent() {
+        // clap panics at build time when a derive is malformed (duplicate
+        // long flags, conflicting defaults, etc.). This forces that
+        // validation into the test run.
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn cli_parses_mouse_pos() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "pos"]).unwrap();
+        assert!(matches!(cli.cmd, Top::Mouse(MouseCmd::Pos)));
+    }
+
+    #[test]
+    fn cli_parses_mouse_click_defaults() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "mouse", "click"]).unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Click {
+                x,
+                y,
+                clicks,
+                interval,
+                button,
+            }) => {
+                assert!(x.is_none());
+                assert!(y.is_none());
+                assert_eq!(clicks, 1);
+                assert_eq!(interval, 0.0);
+                assert_eq!(button, "left");
+            }
+            other => panic!("expected mouse click, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_mouse_click_with_flags() {
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "mouse",
+            "click",
+            "--x",
+            "100",
+            "--y",
+            "200",
+            "--clicks",
+            "3",
+            "--button",
+            "right",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Mouse(MouseCmd::Click {
+                x,
+                y,
+                clicks,
+                button,
+                ..
+            }) => {
+                assert_eq!(x, Some(100));
+                assert_eq!(y, Some(200));
+                assert_eq!(clicks, 3);
+                assert_eq!(button, "right");
+            }
+            other => panic!("expected mouse click, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_key_press_and_hotkey() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "key", "press", "enter"]).unwrap();
+        assert!(matches!(cli.cmd, Top::Key(KeyCmd::Press { .. })));
+
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "key", "hotkey", "ctrl", "shift", "t"])
+            .unwrap();
+        match cli.cmd {
+            Top::Key(KeyCmd::Hotkey { names, .. }) => {
+                assert_eq!(names, vec!["ctrl", "shift", "t"]);
+            }
+            other => panic!("expected key hotkey, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_pixel_and_pixel_match() {
+        let cli = Cli::try_parse_from(["stryke-gui-helper", "pixel", "10", "20"]).unwrap();
+        assert!(matches!(cli.cmd, Top::Pixel { x: 10, y: 20 }));
+
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "pixel-match",
+            "10",
+            "20",
+            "255",
+            "128",
+            "0",
+            "--tolerance",
+            "5",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::PixelMatch {
+                x,
+                y,
+                r,
+                g,
+                b,
+                tolerance,
+            } => {
+                assert_eq!((x, y, r, g, b, tolerance), (10, 20, 255, 128, 0, 5));
+            }
+            other => panic!("expected pixel-match, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_screenshot_region() {
+        // --region needs exactly 4 values per the `num_args = 4` config.
+        let cli = Cli::try_parse_from([
+            "stryke-gui-helper",
+            "screenshot",
+            "--region",
+            "0",
+            "0",
+            "100",
+            "200",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Top::Screenshot { region, output } => {
+                assert_eq!(region, Some(vec![0, 0, 100, 200]));
+                assert!(output.is_none());
+            }
+            other => panic!("expected screenshot, got {other:?}"),
+        }
+
+        // 3 values must fail.
+        assert!(Cli::try_parse_from([
+            "stryke-gui-helper",
+            "screenshot",
+            "--region",
+            "0",
+            "0",
+            "100",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn cli_rejects_unknown_top_level_subcommand() {
+        assert!(Cli::try_parse_from(["stryke-gui-helper", "bogus"]).is_err());
+    }
+}

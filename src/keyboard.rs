@@ -470,3 +470,109 @@ pub fn hotkey(names: &[String], interval: f64) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn key_name_table_has_no_duplicates() {
+        let mut seen = HashSet::new();
+        for n in KEYBOARD_KEY_NAMES {
+            assert!(seen.insert(*n), "duplicate key name in table: {n}");
+        }
+    }
+
+    #[test]
+    fn key_name_table_is_ascii_lowercase() {
+        // parse_key lowercases its input — any uppercase entry in the
+        // table is dead code (will never match) and almost certainly a typo.
+        for n in KEYBOARD_KEY_NAMES {
+            assert!(
+                n.chars().all(|c| !c.is_ascii_uppercase()),
+                "non-lowercase entry: {n}"
+            );
+            assert!(!n.is_empty(), "empty entry in key name table");
+        }
+    }
+
+    #[test]
+    fn parse_key_is_case_insensitive() {
+        assert!(matches!(parse_key("ENTER").unwrap(), Key::Return));
+        assert!(matches!(parse_key("Enter").unwrap(), Key::Return));
+        assert!(matches!(parse_key("enter").unwrap(), Key::Return));
+    }
+
+    #[test]
+    fn parse_key_meta_aliases_collapse_to_meta() {
+        // pyautogui parity: cmd / command / meta / super all == Meta.
+        for n in ["meta", "cmd", "command", "super"] {
+            assert!(matches!(parse_key(n).unwrap(), Key::Meta), "{n}");
+        }
+    }
+
+    #[test]
+    fn parse_key_enter_aliases_collapse_to_return() {
+        for n in ["return", "enter", "numpadenter"] {
+            assert!(matches!(parse_key(n).unwrap(), Key::Return), "{n}");
+        }
+    }
+
+    #[test]
+    fn parse_key_single_char_falls_through_to_unicode() {
+        assert!(matches!(parse_key("a").unwrap(), Key::Unicode('a')));
+        assert!(matches!(parse_key("Z").unwrap(), Key::Unicode('Z')));
+        assert!(matches!(parse_key("7").unwrap(), Key::Unicode('7')));
+        assert!(matches!(parse_key("$").unwrap(), Key::Unicode('$')));
+        // Non-ASCII single char also passes through.
+        assert!(matches!(parse_key("é").unwrap(), Key::Unicode('é')));
+    }
+
+    #[test]
+    fn parse_key_unknown_multi_char_errors() {
+        // A 1-char unknown is Unicode; a multi-char unknown must error so
+        // typos in `.stk` scripts surface instead of silently mapping to
+        // garbage.
+        assert!(parse_key("notakey").is_err());
+        assert!(parse_key("ctrl-c").is_err());
+    }
+
+    #[test]
+    fn parse_key_function_row_all_parse() {
+        // F1..F20 are common across every platform enigo supports.
+        for i in 1..=20 {
+            let name = format!("f{i}");
+            parse_key(&name).unwrap_or_else(|_| panic!("F{i} should parse"));
+        }
+    }
+
+    #[test]
+    fn parse_key_numpad_digits_all_parse() {
+        for i in 0..=9 {
+            let name = format!("num{i}");
+            parse_key(&name).unwrap_or_else(|_| panic!("num{i} should parse"));
+        }
+    }
+
+    #[test]
+    fn parse_key_arrows_distinct() {
+        assert!(matches!(parse_key("up").unwrap(), Key::UpArrow));
+        assert!(matches!(parse_key("down").unwrap(), Key::DownArrow));
+        assert!(matches!(parse_key("left").unwrap(), Key::LeftArrow));
+        assert!(matches!(parse_key("right").unwrap(), Key::RightArrow));
+    }
+
+    #[test]
+    fn parse_key_page_nav_aliases() {
+        assert!(matches!(parse_key("pageup").unwrap(), Key::PageUp));
+        assert!(matches!(parse_key("pgup").unwrap(), Key::PageUp));
+        assert!(matches!(parse_key("pagedown").unwrap(), Key::PageDown));
+        assert!(matches!(parse_key("pgdn").unwrap(), Key::PageDown));
+    }
+
+    #[test]
+    fn parse_key_yen_is_unicode_passthrough() {
+        assert!(matches!(parse_key("yen").unwrap(), Key::Unicode('¥')));
+    }
+}

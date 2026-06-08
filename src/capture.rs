@@ -84,3 +84,34 @@ pub fn screenshot_raw(region: Option<(i32, i32, u32, u32)>) -> Result<Screenshot
         rgba: img.into_raw(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgb_serializes_with_r_g_b_keys() {
+        let c = Rgb { r: 1, g: 2, b: 3 };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(v["r"], 1);
+        assert_eq!(v["g"], 2);
+        assert_eq!(v["b"], 3);
+        assert_eq!(v.as_object().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn screenshot_raw_serializes_with_expected_keys() {
+        let s = ScreenshotRaw {
+            width: 2,
+            height: 1,
+            rgba: vec![10, 20, 30, 255, 40, 50, 60, 255],
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(v["width"], 2);
+        assert_eq!(v["height"], 1);
+        assert_eq!(v["rgba"].as_array().unwrap().len(), 8);
+        assert_eq!(v["rgba"][3], 255);
+    }
+}

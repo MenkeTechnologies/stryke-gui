@@ -33,3 +33,36 @@ pub fn emit_json<T: serde::Serialize>(v: &T) -> Result<()> {
     w.flush()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn b(s: &str) -> Button {
+        parse_button(s)
+    }
+
+    #[test]
+    fn parse_button_left_is_default_for_unknown() {
+        // Spec: unknown / empty falls back to Left so a typo in a .stk
+        // script doesn't error — pyautogui parity.
+        assert!(matches!(b(""), Button::Left));
+        assert!(matches!(b("nope"), Button::Left));
+        assert!(matches!(b("left"), Button::Left));
+        assert!(matches!(b("LEFT"), Button::Left));
+    }
+
+    #[test]
+    fn parse_button_right_aliases() {
+        assert!(matches!(b("right"), Button::Right));
+        assert!(matches!(b("R"), Button::Right));
+        assert!(matches!(b("Secondary"), Button::Right));
+    }
+
+    #[test]
+    fn parse_button_middle_aliases() {
+        assert!(matches!(b("middle"), Button::Middle));
+        assert!(matches!(b("M"), Button::Middle));
+        assert!(matches!(b("Wheel"), Button::Middle));
+    }
+}

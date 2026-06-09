@@ -257,5 +257,3 @@ fn GUI::screenshot_region ($l, $t, $w, $h, $path = undef) {
     }
     ($o->{width}, $o->{height}, $o->{rgba})
 }
-
-1

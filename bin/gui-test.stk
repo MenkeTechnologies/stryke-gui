@@ -1,0 +1,37 @@
+# bin/gui-test.stk — smoke test for the stryke-gui install path.
+#
+# Installed as `~/.stryke/bin/gui-test` by `s pkg install -g
+# github.com/MenkeTechnologies/stryke-gui`. Run from any directory
+# to verify the whole stack works end-to-end:
+#
+#   1. shell launches ~/.stryke/bin/gui-test (sh shim)
+#   2. shim execs `stryke <store>/bin/gui-test.stk`
+#   3. stryke parses, `use GUI` resolves via ~/.stryke/installed.toml
+#   4. stryke's FFI loader dlopens libstryke_gui.{dylib,so}
+#   5. GUI::* calls dispatch into the cdylib in-process
+#
+# Output proves each step succeeded. Errors at any step surface as
+# stryke runtime errors with line numbers pointing here.
+
+use GUI
+
+p "stryke-gui smoke test"
+p ""
+
+# 1. permission-free: KEYBOARD_KEY_NAMES is a static slice inside the
+#    cdylib, no Accessibility/Screen Recording prompt.
+my @keys = GUI::keyboard_keys()
+p "keyboard_keys: " . scalar(@keys) . " names (expect >= 100)"
+
+# 2. permission-free on linux/wayland; macOS first call may prompt for
+#    Screen Recording but doesn't strictly need it for size lookup.
+my ($w, $h) = GUI::screen_size()
+p "screen_size:   ${w} x ${h}"
+
+# 3. permission-gated on macOS (Accessibility); will prompt on first
+#    invocation. Subsequent invocations after granting return cleanly.
+my ($x, $y) = GUI::mouse_pos()
+p "mouse_pos:     ($x, $y)"
+
+p ""
+p "OK — FFI roundtrip works"

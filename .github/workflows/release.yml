@@ -84,23 +84,29 @@ jobs:
         # `pkg::commands::install_global_from_github` expects:
         #
         #   stryke-gui-<tag>-<triple>/
-        #     stryke.toml
+        #     stryke.toml          ([package] + [ffi] + [bin])
         #     lib/
-        #       GUI.stk
-        #       libstryke_gui.{dylib,so}
+        #       GUI.stk            (stryke-side wrapper)
+        #       libstryke_gui.{dylib,so}   (FFI cdylib)
+        #     bin/
+        #       gui-test.stk       (installable smoke-test launcher)
         #
         # After install, `lib/GUI.stk`'s `use GUI` triggers the FFI
         # auto-load (pkg::commands::try_load_ffi_for) which dlopens the
-        # sibling cdylib next to it.
+        # sibling cdylib. The `[bin] gui-test = "bin/gui-test.stk"`
+        # entry causes `s pkg install -g` to drop a launcher at
+        # ~/.stryke/bin/gui-test pointing at bin/gui-test.stk in the
+        # store.
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.tag }}"
           TRIPLE="${{ matrix.target }}"
           STEM="stryke-gui-${TAG}-${TRIPLE}"
-          mkdir -p "staging/${STEM}/lib"
+          mkdir -p "staging/${STEM}/lib" "staging/${STEM}/bin"
           cp stryke.toml "staging/${STEM}/"
           cp lib/GUI.stk "staging/${STEM}/lib/"
           cp "target/${TRIPLE}/release/${{ matrix.dylib }}" "staging/${STEM}/lib/"
+          cp bin/gui-test.stk "staging/${STEM}/bin/"
           ARCHIVE="${STEM}.tar.gz"
           tar -C staging -czf "${ARCHIVE}" "${STEM}"
           if command -v sha256sum >/dev/null 2>&1; then

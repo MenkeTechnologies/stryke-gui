@@ -1,6 +1,6 @@
 [package]
 name = "gui"
-version = "0.2.0"
+version = "0.2.1"
 description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. cdylib package — loaded in-process via dlopen on first `use GUI`. No subprocess fork per call; the Enigo input handle persists across calls."
 authors = ["MenkeTechnologies"]
 license = "MIT"
@@ -30,6 +30,13 @@ exports = [
     "gui__pixel_match",
     "gui__screenshot",
 ]
+
+# Installable smoke-test launcher. `s pkg install -g` writes
+# ~/.stryke/bin/gui-test as a sh shim that execs stryke against the
+# store entry's bin/gui-test.stk. Lets users verify the install +
+# FFI roundtrip after `s pkg install -g github.com/...`.
+[bin]
+gui-test = "bin/gui-test.stk"
 
 [scripts]
 build = "cargo build --release"

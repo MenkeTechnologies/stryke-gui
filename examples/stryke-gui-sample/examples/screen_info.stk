@@ -9,10 +9,10 @@
 use GUI
 use Sample
 
-my ($w, $h)   = GUI::screen_size()
-my ($cx, $cy) = Sample::center($w, $h)
-my ($mx, $my) = GUI::mouse_pos()
-my @keys      = GUI::keyboard_keys()
+val ($w, $h)   = GUI::screen_size()
+val ($cx, $cy) = Sample::center($w, $h)
+val ($mx, $my) = GUI::mouse_pos()
+val @keys      = GUI::keyboard_keys()
 
 p "── stryke-gui-sample: screen_info ───────────────────"
 p Sample::format_screen($w, $h)

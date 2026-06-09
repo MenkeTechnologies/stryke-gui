@@ -9,7 +9,7 @@ package Sample
 
 ## One-line summary of primary display geometry → "screen: WxH (N pixels)".
 fn Sample::format_screen ($w, $h) {
-    my $px = $w * $h
+    val $px = $w * $h
     "screen: ${w}x${h} (${px} pixels)"
 }
 
@@ -25,8 +25,8 @@ fn Sample::count_matching ($keys, $pattern) {
 
 ## One-line key-name summary → "keys: N total, F function, M media".
 fn Sample::format_keys_summary ($keys) {
-    my $total    = scalar @$keys
-    my $function = Sample::count_matching($keys, qr/^f\d+$/)
-    my $media    = Sample::count_matching($keys, qr/track|playpause|volume|mute/)
+    val $total    = scalar @$keys
+    val $function = Sample::count_matching($keys, qr/^f\d+$/)
+    val $media    = Sample::count_matching($keys, qr/track|playpause|volume|mute/)
     "keys: ${total} total, ${function} function, ${media} media"
 }

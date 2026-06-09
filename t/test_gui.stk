@@ -16,16 +16,16 @@ p "1..3"
 
 # 1. keyboard_keys returns a non-trivial list (proves the FFI call path
 #    end-to-end: stryke → gui__key_keys → JSON → stryke).
-my @keys = GUI::keyboard_keys()
+val @keys = GUI::keyboard_keys()
 if (@keys > 100) { p "ok 1 - keyboard_keys returns " . scalar(@keys) . " names" }
 else { p "not ok 1 - keyboard_keys returned " . scalar(@keys) }
 
 # 2. the list contains well-known names.
-my %seen = map { $_ => 1 } @keys
+val %seen = map { $_ => 1 } @keys
 if ($seen{enter} && $seen{shift} && $seen{f1}) { p "ok 2 - contains enter/shift/f1" }
 else { p "not ok 2 - missing expected key names" }
 
 # 3. function keys f1..f24 are all present.
-my @fkeys = grep { /^f\d+$/ } @keys
+val @fkeys = grep { /^f\d+$/ } @keys
 if (@fkeys >= 24) { p "ok 3 - " . scalar(@fkeys) . " function keys present" }
 else { p "not ok 3 - only " . scalar(@fkeys) . " function keys" }

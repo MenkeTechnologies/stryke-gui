@@ -9,9 +9,9 @@
 use GUI
 use Sample
 
-my ($w, $h) = GUI::screen_size()
-my ($cx, $cy) = Sample::center($w, $h)
-my @keys = GUI::keyboard_keys()
+val ($w, $h) = GUI::screen_size()
+val ($cx, $cy) = Sample::center($w, $h)
+val @keys = GUI::keyboard_keys()
 
 p Sample::format_screen($w, $h)
 p "center:  ($cx, $cy)"

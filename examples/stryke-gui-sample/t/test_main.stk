@@ -10,39 +10,39 @@ use GUI
 use Sample
 
 # ── Sample::format_screen ──────────────────────────────────────────
-my $line = Sample::format_screen(1920, 1080)
+val $line = Sample::format_screen(1920, 1080)
 assert_contains $line, "1920x1080",      "format_screen embeds dims"
 assert_contains $line, "2073600 pixels", "format_screen computes pixel count"
 
 # ── Sample::center ─────────────────────────────────────────────────
-my ($cx, $cy) = Sample::center(1920, 1080)
+val ($cx, $cy) = Sample::center(1920, 1080)
 assert_eq $cx, 960, "center x for 1920"
 assert_eq $cy, 540, "center y for 1080"
 
-my ($cx2, $cy2) = Sample::center(3, 5)
+val ($cx2, $cy2) = Sample::center(3, 5)
 assert_eq $cx2, 1, "center x truncates toward 0"
 assert_eq $cy2, 2, "center y truncates toward 0"
 
 # ── Sample::count_matching ─────────────────────────────────────────
-my @sample = ("a", "ab", "ba", "z")
+val @sample = ("a", "ab", "ba", "z")
 assert_eq Sample::count_matching(\@sample, qr/a/), 3, "count_matching: 3 of 4 match /a/"
 assert_eq Sample::count_matching(\@sample, qr/z/), 1, "count_matching: 1 of 4 match /z/"
 assert_eq Sample::count_matching(\@sample, qr/x/), 0, "count_matching: 0 of 4 match /x/"
 
 # ── GUI::keyboard_keys FFI roundtrip (permission-free) ─────────────
-my @keys = GUI::keyboard_keys()
+val @keys = GUI::keyboard_keys()
 assert_gt scalar(@keys), 100, "GUI::keyboard_keys returns >100 names"
 
-my %seen = map { $_ => 1 } @keys
+val %seen = map { $_ => 1 } @keys
 assert_ok $seen{enter}, "keys contain 'enter'"
 assert_ok $seen{shift}, "keys contain 'shift'"
 assert_ok $seen{f1},    "keys contain 'f1'"
 
 # ── Sample::format_keys_summary against the real key list ──────────
-my $fcount = Sample::count_matching(\@keys, qr/^f\d+$/)
+val $fcount = Sample::count_matching(\@keys, qr/^f\d+$/)
 assert_ge $fcount, 24, "f1..f24 all present"
 
-my $summary = Sample::format_keys_summary(\@keys)
+val $summary = Sample::format_keys_summary(\@keys)
 assert_match qr/\d+ total/,    $summary, "summary contains total"
 assert_match qr/\d+ function/, $summary, "summary contains function count"
 assert_match qr/\d+ media/,    $summary, "summary contains media count"

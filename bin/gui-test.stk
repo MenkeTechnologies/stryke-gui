@@ -20,17 +20,17 @@ p ""
 
 # 1. permission-free: KEYBOARD_KEY_NAMES is a static slice inside the
 #    cdylib, no Accessibility/Screen Recording prompt.
-my @keys = GUI::keyboard_keys()
+val @keys = GUI::keyboard_keys()
 p "keyboard_keys: " . scalar(@keys) . " names (expect >= 100)"
 
 # 2. permission-free on linux/wayland; macOS first call may prompt for
 #    Screen Recording but doesn't strictly need it for size lookup.
-my ($w, $h) = GUI::screen_size()
+val ($w, $h) = GUI::screen_size()
 p "screen_size:   ${w} x ${h}"
 
 # 3. permission-gated on macOS (Accessibility); will prompt on first
 #    invocation. Subsequent invocations after granting return cleanly.
-my ($x, $y) = GUI::mouse_pos()
+val ($x, $y) = GUI::mouse_pos()
 p "mouse_pos:     ($x, $y)"
 
 p ""

@@ -23,7 +23,7 @@ package GUI
 ## Decode the JSON returned by a `gui__*` FFI call and die with a
 ## descriptive message when the cdylib reported an error.
 fn GUI::_decode ($name, $json) {
-    my $o = from_json $json
+    val $o = from_json $json
     if (ref $o eq "HASH" && exists $o->{error}) {
         die "GUI::$name: $o->{error}"
     }
@@ -34,13 +34,13 @@ fn GUI::_decode ($name, $json) {
 
 ## Current cursor position → ($x, $y).
 fn GUI::mouse_pos {
-    my $o = GUI::_decode("mouse_pos", gui__mouse_pos("{}"))
+    val $o = GUI::_decode("mouse_pos", gui__mouse_pos("{}"))
     ($o->{x}, $o->{y})
 }
 
 ## Primary display dimensions → ($w, $h).
 fn GUI::screen_size {
-    my $o = GUI::_decode("screen_size", gui__screen_size("{}"))
+    val $o = GUI::_decode("screen_size", gui__screen_size("{}"))
     ($o->{width}, $o->{height})
 }
 
@@ -51,7 +51,7 @@ fn GUI::mouse_size {
 
 ## 1 if ($x, $y) is on the primary display, else 0.
 fn GUI::on_screen ($x, $y) {
-    my $o = GUI::_decode("on_screen", gui__screen_on_screen(to_json({ x => $x, y => $y })))
+    val $o = GUI::_decode("on_screen", gui__screen_on_screen(to_json({ x => $x, y => $y })))
     $o->{on_screen} ? 1 : 0
 }
 
@@ -102,7 +102,7 @@ fn GUI::mouse_drag_rel ($dx, $dy, $duration = 0, $button = "left") {
 ## Click at the current position, or at ($x, $y) if both are defined.
 ## %opts: x, y, clicks (default 1), interval (default 0), button (default left).
 fn GUI::mouse_click (%opts) {
-    my %args = (
+    var %args = (
         clicks   => exists $opts{clicks}   ? $opts{clicks}   : 1,
         interval => exists $opts{interval} ? $opts{interval} : 0,
         button   => exists $opts{button}   ? $opts{button}   : "left",
@@ -151,7 +151,7 @@ fn GUI::mouse_up ($button = "left") {
 
 ## Vertical scroll by $clicks (positive = up). Optional ($x, $y) move first.
 fn GUI::mouse_scroll ($clicks, $x = undef, $y = undef) {
-    my %args = (clicks => $clicks, horizontal => \0)
+    var %args = (clicks => $clicks, horizontal => \0)
     $args{x} = $x if defined $x
     $args{y} = $y if defined $y
     GUI::_decode("mouse_scroll", gui__mouse_scroll(to_json(\%args)))
@@ -160,7 +160,7 @@ fn GUI::mouse_scroll ($clicks, $x = undef, $y = undef) {
 
 ## Horizontal scroll by $clicks.
 fn GUI::mouse_hscroll ($clicks, $x = undef, $y = undef) {
-    my %args = (clicks => $clicks, horizontal => \1)
+    var %args = (clicks => $clicks, horizontal => \1)
     $args{x} = $x if defined $x
     $args{y} = $y if defined $y
     GUI::_decode("mouse_hscroll", gui__mouse_scroll(to_json(\%args)))
@@ -205,7 +205,7 @@ fn GUI::key_hotkey (@keys) {
 
 ## Every recognized key name → list of strings.
 fn GUI::keyboard_keys {
-    my $arr = GUI::_decode("keyboard_keys", gui__key_keys("{}"))
+    val $arr = GUI::_decode("keyboard_keys", gui__key_keys("{}"))
     @$arr
 }
 
@@ -213,14 +213,14 @@ fn GUI::keyboard_keys {
 
 ## RGB color at ($x, $y) → ($r, $g, $b).
 fn GUI::pixel ($x, $y) {
-    my $o = GUI::_decode("pixel", gui__pixel(to_json({ x => $x, y => $y })))
+    val $o = GUI::_decode("pixel", gui__pixel(to_json({ x => $x, y => $y })))
     ($o->{r}, $o->{g}, $o->{b})
 }
 
 ## 1 if the pixel at ($x, $y) matches $rgb (arrayref [r,g,b]) within
 ## $tolerance per channel, else 0.
 fn GUI::pixel_matches_color ($x, $y, $rgb, $tolerance = 0) {
-    my $o = GUI::_decode("pixel_match",
+    val $o = GUI::_decode("pixel_match",
         gui__pixel_match(to_json({
             x         => $x,
             y         => $y,
@@ -236,9 +236,9 @@ fn GUI::pixel_matches_color ($x, $y, $rgb, $tolerance = 0) {
 ##   GUI::screenshot()           → ($w, $h, \@rgba_bytes)
 ##   GUI::screenshot("foo.png")  → writes PNG, returns the path.
 fn GUI::screenshot ($path = undef) {
-    my %args
+    var %args
     $args{output} = $path if defined $path
-    my $o = GUI::_decode("screenshot", gui__screenshot(to_json(\%args)))
+    val $o = GUI::_decode("screenshot", gui__screenshot(to_json(\%args)))
     if (defined $path) {
         return $o->{path}
     }
@@ -249,9 +249,9 @@ fn GUI::screenshot ($path = undef) {
 ##   GUI::screenshot_region(L, T, W, H)         → ($w, $h, \@rgba_bytes)
 ##   GUI::screenshot_region(L, T, W, H, "p.png") → writes PNG, returns path.
 fn GUI::screenshot_region ($l, $t, $w, $h, $path = undef) {
-    my %args = (region => [$l, $t, $w, $h])
+    var %args = (region => [$l, $t, $w, $h])
     $args{output} = $path if defined $path
-    my $o = GUI::_decode("screenshot_region", gui__screenshot(to_json(\%args)))
+    val $o = GUI::_decode("screenshot_region", gui__screenshot(to_json(\%args)))
     if (defined $path) {
         return $o->{path}
     }

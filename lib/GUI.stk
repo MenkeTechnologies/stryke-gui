@@ -1,20 +1,20 @@
-# lib/GUI.stk — GUI automation for stryke (`use GUI`).
-#
-# Thin wrapper around the `stryke-gui` cdylib's `gui__*` exports. The cdylib
-# is dlopened in-process on first `use GUI` (see stryke's
-# `pkg/commands.rs::try_load_ffi_for`) and registers each export as a
-# stryke-callable function via `rust_ffi::load_cdylib`. Every wrapper here
-# builds a JSON args dict, calls the FFI symbol, and parses the JSON return.
-#
-# Replaces the v1 helper-binary model (fork(2) + exec(2) + JSON-over-pipe
-# per call) with a single dlopen + direct function call per op. The
-# `Enigo` input handle persists in `OnceCell` inside the cdylib for the
-# life of the stryke process — no per-call init.
-#
-# Permissions are unchanged: macOS prompts once for Accessibility on the
-# first input event (mouse/keyboard) and once for Screen Recording on the
-# first pixel/screenshot call. Wayland needs the virtual-pointer +
-# screenshot portal. X11 / Windows are unconditioned.
+## lib/GUI.stk — GUI automation for stryke (`use GUI`).
+##
+## Thin wrapper around the `stryke-gui` cdylib's `gui__*` exports. The cdylib
+## is dlopened in-process on first `use GUI` (see stryke's
+## `pkg/commands.rs::try_load_ffi_for`) and registers each export as a
+## stryke-callable function via `rust_ffi::load_cdylib`. Every wrapper here
+## builds a JSON args dict, calls the FFI symbol, and parses the JSON return.
+##
+## Replaces the v1 helper-binary model (fork(2) + exec(2) + JSON-over-pipe
+## per call) with a single dlopen + direct function call per op. The
+## `Enigo` input handle persists in `OnceCell` inside the cdylib for the
+## life of the stryke process — no per-call init.
+##
+## Permissions are unchanged: macOS prompts once for Accessibility on the
+## first input event (mouse/keyboard) and once for Screen Recording on the
+## first pixel/screenshot call. Wayland needs the virtual-pointer +
+## screenshot portal. X11 / Windows are unconditioned.
 
 package GUI
 

@@ -20,8 +20,8 @@ package GUI
 
 # ── error dispatch ────────────────────────────────────────────────────
 
-# Decode the JSON returned by a `gui__*` FFI call and die with a
-# descriptive message when the cdylib reported an error.
+## Decode the JSON returned by a `gui__*` FFI call and die with a
+## descriptive message when the cdylib reported an error.
 fn GUI::_decode ($name, $json) {
     my $o = from_json $json
     if (ref $o eq "HASH" && exists $o->{error}) {
@@ -32,24 +32,24 @@ fn GUI::_decode ($name, $json) {
 
 # ── mouse: position / size ────────────────────────────────────────────
 
-# Current cursor position → ($x, $y).
+## Current cursor position → ($x, $y).
 fn GUI::mouse_pos {
     my $o = GUI::_decode("mouse_pos", gui__mouse_pos("{}"))
     ($o->{x}, $o->{y})
 }
 
-# Primary display dimensions → ($w, $h).
+## Primary display dimensions → ($w, $h).
 fn GUI::screen_size {
     my $o = GUI::_decode("screen_size", gui__screen_size("{}"))
     ($o->{width}, $o->{height})
 }
 
-# Alias for screen_size (pyautogui's `size()` spelling).
+## Alias for screen_size (pyautogui's `size()` spelling).
 fn GUI::mouse_size {
     GUI::screen_size()
 }
 
-# 1 if ($x, $y) is on the primary display, else 0.
+## 1 if ($x, $y) is on the primary display, else 0.
 fn GUI::on_screen ($x, $y) {
     my $o = GUI::_decode("on_screen", gui__screen_on_screen(to_json({ x => $x, y => $y })))
     $o->{on_screen} ? 1 : 0
@@ -57,21 +57,21 @@ fn GUI::on_screen ($x, $y) {
 
 # ── mouse: motion ─────────────────────────────────────────────────────
 
-# Absolute move to ($x, $y). Optional $duration seconds animates the path.
+## Absolute move to ($x, $y). Optional $duration seconds animates the path.
 fn GUI::mouse_move ($x, $y, $duration = 0) {
     GUI::_decode("mouse_move",
         gui__mouse_move(to_json({ x => $x, y => $y, duration => $duration })))
     1
 }
 
-# Relative move by ($dx, $dy). Optional $duration seconds animates.
+## Relative move by ($dx, $dy). Optional $duration seconds animates.
 fn GUI::mouse_move_rel ($dx, $dy, $duration = 0) {
     GUI::_decode("mouse_move_rel",
         gui__mouse_move_rel(to_json({ dx => $dx, dy => $dy, duration => $duration })))
     1
 }
 
-# Press-drag to ($x, $y). Optional $duration + $button.
+## Press-drag to ($x, $y). Optional $duration + $button.
 fn GUI::mouse_drag ($x, $y, $duration = 0, $button = "left") {
     GUI::_decode("mouse_drag",
         gui__mouse_drag(to_json({
@@ -84,7 +84,7 @@ fn GUI::mouse_drag ($x, $y, $duration = 0, $button = "left") {
     1
 }
 
-# Press-drag by ($dx, $dy).
+## Press-drag by ($dx, $dy).
 fn GUI::mouse_drag_rel ($dx, $dy, $duration = 0, $button = "left") {
     GUI::_decode("mouse_drag",
         gui__mouse_drag(to_json({
@@ -99,8 +99,8 @@ fn GUI::mouse_drag_rel ($dx, $dy, $duration = 0, $button = "left") {
 
 # ── mouse: buttons ────────────────────────────────────────────────────
 
-# Click at the current position, or at ($x, $y) if both are defined.
-# %opts: x, y, clicks (default 1), interval (default 0), button (default left).
+## Click at the current position, or at ($x, $y) if both are defined.
+## %opts: x, y, clicks (default 1), interval (default 0), button (default left).
 fn GUI::mouse_click (%opts) {
     my %args = (
         clicks   => exists $opts{clicks}   ? $opts{clicks}   : 1,
@@ -113,7 +113,7 @@ fn GUI::mouse_click (%opts) {
     1
 }
 
-# Single right / middle click; optional ($x, $y) to move there first.
+## Single right / middle click; optional ($x, $y) to move there first.
 fn GUI::mouse_right_click ($x = undef, $y = undef) {
     GUI::mouse_click(x => $x, y => $y, button => "right")
 }
@@ -122,7 +122,7 @@ fn GUI::mouse_middle_click ($x = undef, $y = undef) {
     GUI::mouse_click(x => $x, y => $y, button => "middle")
 }
 
-# Double / triple click; optional ($x, $y) and $button.
+## Double / triple click; optional ($x, $y) and $button.
 fn GUI::mouse_double_click ($x = undef, $y = undef, $button = "left") {
     GUI::mouse_click(x => $x, y => $y, clicks => 2, button => $button)
 }
@@ -131,7 +131,7 @@ fn GUI::mouse_triple_click ($x = undef, $y = undef, $button = "left") {
     GUI::mouse_click(x => $x, y => $y, clicks => 3, button => $button)
 }
 
-# Press / release a mouse button without the opposite action.
+## Press / release a mouse button without the opposite action.
 fn GUI::mouse_down ($button = "left") {
     GUI::_decode("mouse_down",
         gui__mouse_button_hold(to_json({ button => $button, press => \1 })))
@@ -146,7 +146,7 @@ fn GUI::mouse_up ($button = "left") {
 
 # ── mouse: wheel ──────────────────────────────────────────────────────
 
-# Vertical scroll by $clicks (positive = up). Optional ($x, $y) move first.
+## Vertical scroll by $clicks (positive = up). Optional ($x, $y) move first.
 fn GUI::mouse_scroll ($clicks, $x = undef, $y = undef) {
     my %args = (clicks => $clicks, horizontal => \0)
     $args{x} = $x if defined $x
@@ -155,7 +155,7 @@ fn GUI::mouse_scroll ($clicks, $x = undef, $y = undef) {
     1
 }
 
-# Horizontal scroll by $clicks.
+## Horizontal scroll by $clicks.
 fn GUI::mouse_hscroll ($clicks, $x = undef, $y = undef) {
     my %args = (clicks => $clicks, horizontal => \1)
     $args{x} = $x if defined $x
@@ -166,14 +166,14 @@ fn GUI::mouse_hscroll ($clicks, $x = undef, $y = undef) {
 
 # ── keyboard ──────────────────────────────────────────────────────────
 
-# Press a named key $presses times with $interval seconds between presses.
+## Press a named key $presses times with $interval seconds between presses.
 fn GUI::key_press ($name, $presses = 1, $interval = 0) {
     GUI::_decode("key_press",
         gui__key_press(to_json({ name => $name, presses => $presses, interval => $interval })))
     1
 }
 
-# Hold a key down (no release) / release a held key.
+## Hold a key down (no release) / release a held key.
 fn GUI::key_down ($name) {
     GUI::_decode("key_down", gui__key_down(to_json({ name => $name })))
     1
@@ -184,14 +184,14 @@ fn GUI::key_up ($name) {
     1
 }
 
-# Type a literal UTF-8 string. Optional $interval seconds between chars.
+## Type a literal UTF-8 string. Optional $interval seconds between chars.
 fn GUI::key_type ($text, $interval = 0) {
     GUI::_decode("key_type",
         gui__key_type(to_json({ text => $text, interval => $interval })))
     1
 }
 
-# Chord: press keys in order, release in reverse. Accepts a list of names.
+## Chord: press keys in order, release in reverse. Accepts a list of names.
 fn GUI::key_hotkey (@keys) {
     die "GUI::key_hotkey needs at least one key" if @keys == 0
     GUI::_decode("key_hotkey",
@@ -199,7 +199,7 @@ fn GUI::key_hotkey (@keys) {
     1
 }
 
-# Every recognized key name → list of strings.
+## Every recognized key name → list of strings.
 fn GUI::keyboard_keys {
     my $arr = GUI::_decode("keyboard_keys", gui__key_keys("{}"))
     @$arr
@@ -207,14 +207,14 @@ fn GUI::keyboard_keys {
 
 # ── pixel + screenshot ────────────────────────────────────────────────
 
-# RGB color at ($x, $y) → ($r, $g, $b).
+## RGB color at ($x, $y) → ($r, $g, $b).
 fn GUI::pixel ($x, $y) {
     my $o = GUI::_decode("pixel", gui__pixel(to_json({ x => $x, y => $y })))
     ($o->{r}, $o->{g}, $o->{b})
 }
 
-# 1 if the pixel at ($x, $y) matches $rgb (arrayref [r,g,b]) within
-# $tolerance per channel, else 0.
+## 1 if the pixel at ($x, $y) matches $rgb (arrayref [r,g,b]) within
+## $tolerance per channel, else 0.
 fn GUI::pixel_matches_color ($x, $y, $rgb, $tolerance = 0) {
     my $o = GUI::_decode("pixel_match",
         gui__pixel_match(to_json({
@@ -228,9 +228,9 @@ fn GUI::pixel_matches_color ($x, $y, $rgb, $tolerance = 0) {
     $o->{match} ? 1 : 0
 }
 
-# Capture the primary display.
-#   GUI::screenshot()           → ($w, $h, \@rgba_bytes)
-#   GUI::screenshot("foo.png")  → writes PNG, returns the path.
+## Capture the primary display.
+##   GUI::screenshot()           → ($w, $h, \@rgba_bytes)
+##   GUI::screenshot("foo.png")  → writes PNG, returns the path.
 fn GUI::screenshot ($path = undef) {
     my %args
     $args{output} = $path if defined $path
@@ -241,9 +241,9 @@ fn GUI::screenshot ($path = undef) {
     ($o->{width}, $o->{height}, $o->{rgba})
 }
 
-# Capture an ($l, $t, $w, $h) region of the primary display.
-#   GUI::screenshot_region(L, T, W, H)         → ($w, $h, \@rgba_bytes)
-#   GUI::screenshot_region(L, T, W, H, "p.png") → writes PNG, returns path.
+## Capture an ($l, $t, $w, $h) region of the primary display.
+##   GUI::screenshot_region(L, T, W, H)         → ($w, $h, \@rgba_bytes)
+##   GUI::screenshot_region(L, T, W, H, "p.png") → writes PNG, returns path.
 fn GUI::screenshot_region ($l, $t, $w, $h, $path = undef) {
     my %args = (region => [$l, $t, $w, $h])
     $args{output} = $path if defined $path

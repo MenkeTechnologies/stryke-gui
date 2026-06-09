@@ -18,10 +18,10 @@ val $REVOLUTIONS = 2
 
 p "── mouse circle demo ────────────────────────────────"
 
-var @screen = GUI::screen_size()
+val @screen = GUI::screen_size()
 val $cx = int($screen[0] / 2)
 val $cy = int($screen[1] / 2)
-var @start = GUI::mouse_pos()
+val @start = GUI::mouse_pos()
 val $start_x = $start[0]
 val $start_y = $start[1]
 
@@ -43,12 +43,12 @@ $SIG{INT} = fn {
 # radians. 2π ≈ 6.283185307 — using a literal so the loop body is a
 # single bytecode operation.
 val $TWO_PI = 6.283185307179586
-for var $rev (1:$REVOLUTIONS) {
+for val $rev (1:$REVOLUTIONS) {
     p "rev #{$rev}..."
-    for var $i (0:$STEPS - 1) {
-        var $theta = $TWO_PI * $i / $STEPS
-        var $x = int($cx + $RADIUS * cos($theta))
-        var $y = int($cy + $RADIUS * sin($theta))
+    for val $i (0:$STEPS - 1) {
+        val $theta = $TWO_PI * $i / $STEPS
+        val $x = int($cx + $RADIUS * cos($theta))
+        val $y = int($cy + $RADIUS * sin($theta))
         GUI::mouse_move($x, $y, $STEP_DURATION)
     }
 }

@@ -19,7 +19,7 @@ val $DURATION = 1.5
 
 p "── drag demo ────────────────────────────────────────"
 
-var @screen = GUI::screen_size()
+val @screen = GUI::screen_size()
 val $cx = int($screen[0] / 2)
 val $cy = int($screen[1] / 2)
 val $start_x = $cx - int($BOX_W / 2)
@@ -35,7 +35,7 @@ p ""
 p "click into the target window (text editor, paint app, file"
 p "manager) during the next ${WARMUP}s. the drag will affect"
 p "whatever's at the press coord — caveat emptor."
-for var $i (1:$WARMUP) {
+for val $i (1:$WARMUP) {
     p "  #{$WARMUP - $i + 1}..."
     sleep 1
 }

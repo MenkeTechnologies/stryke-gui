@@ -37,7 +37,7 @@ val $ELLIPSIS             = "..."
 # Hash form keeps the spec + help text + defaults in one declaration;
 # getopts auto-intercepts --help / -h, prints a formatted usage block,
 # and exits cleanly. Returns a hashref of canonical-name → value.
-var %opts = %{ getopts({
+val %opts = %{ getopts({
     "caffeinate|c"  => { help => "keep nudging during off-hours too",  default => 0 },
     "start|s=i"     => { help => "on-hours start hour",                 default => 9 },
     "end|e=i"       => { help => "on-hours end hour",                   default => 17 },
@@ -53,7 +53,7 @@ val $end_hour   = $opts{end}
 val $sleep_time = $opts{time}
 
 fn now_string {
-    var @t = localtime time()
+    val @t = localtime time()
     sprintf "%04d-%02d-%02d %02d:%02d:%02d",
         $t[5] + 1900, $t[4] + 1, $t[3], $t[2], $t[1], $t[0]
 }
@@ -61,8 +61,8 @@ fn now_string {
 fn logger = p "\x1b[${COLOR}m#{now_string()} - $_\x1b[0m"
 
 fn off_hours_pred {
-    var @t = localtime time()
-    var $h = $t[2]
+    val @t = localtime time()
+    val $h = $t[2]
     $h >= $end_hour || $h < $start_hour
 }
 
@@ -90,8 +90,8 @@ loop {
         logger "Entering off hours sleeping$ELLIPSIS"
         while (off_hours_pred()) {
             if ($was_in_on_hours) {
-                var $n = random_between 5, 250
-                var $secs = $n * 2 * $sleep_time
+                val $n = random_between 5, 250
+                val $secs = $n * 2 * $sleep_time
                 logger "movement loop $n times, #{int($secs / 60)} minutes, #{$secs % 60} seconds"
                 for (1:$n) { movement_loop() }
                 logger "going into off hours"

@@ -24,7 +24,7 @@ p "the script will then type:"
 p "  '$LINE'"
 p ""
 
-for var $i (1:$WARMUP) {
+for val $i (1:$WARMUP) {
     p "  #{$WARMUP - $i + 1}..."
     sleep 1
 }

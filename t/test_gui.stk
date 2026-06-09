@@ -1,31 +1,30 @@
-# t/test_gui.stk — plumbing tests for the stryke `gui` package.
-#
-# Exercises the FFI surface without needing input/screen permissions:
-# `keyboard_keys` is a pure dispatch into a static key-name table inside
-# the cdylib (no enigo init, no platform input handle). Skips cleanly
-# when the cdylib hasn't been built — useful when checking out the
-# package on a machine that doesn't have rustc installed.
-#
-# The mouse/keyboard/pixel/screenshot ops themselves need OS permission
-# (macOS Accessibility + Screen Recording, Wayland portals), so they are
-# not asserted here — they can't run unattended in CI.
+## t/test_gui.stk — assertion tests for the stryke `GUI` package.
+##
+## Uses stryke's native test framework (`assert_*` + `test_run`).
+## Exercises the FFI surface without needing input/screen permissions:
+## `keyboard_keys` is a pure dispatch into a static key-name table inside
+## the cdylib (no enigo init, no platform input handle), so it runs
+## unattended in CI.
+##
+## The mouse/keyboard/pixel/screenshot ops themselves need OS permission
+## (macOS Accessibility + Screen Recording, Wayland portals), so they are
+## not asserted here — they can't run unattended in CI.
 
 use GUI
 
-p "1..3"
-
-# 1. keyboard_keys returns a non-trivial list (proves the FFI call path
-#    end-to-end: stryke → gui__key_keys → JSON → stryke).
+# ── GUI::keyboard_keys FFI roundtrip (permission-free) ─────────────
+# Proves the FFI call path end-to-end: stryke → gui__key_keys → JSON → stryke.
 val @keys = GUI::keyboard_keys()
-if (@keys > 100) { p "ok 1 - keyboard_keys returns " . scalar(@keys) . " names" }
-else { p "not ok 1 - keyboard_keys returned " . scalar(@keys) }
+assert_gt scalar(@keys), 100, "GUI::keyboard_keys returns >100 names"
 
-# 2. the list contains well-known names.
+# ── well-known key names are present ───────────────────────────────
 val %seen = map { $_ => 1 } @keys
-if ($seen{enter} && $seen{shift} && $seen{f1}) { p "ok 2 - contains enter/shift/f1" }
-else { p "not ok 2 - missing expected key names" }
+assert_ok $seen{enter}, "keys contain 'enter'"
+assert_ok $seen{shift}, "keys contain 'shift'"
+assert_ok $seen{f1},    "keys contain 'f1'"
 
-# 3. function keys f1..f24 are all present.
+# ── function keys f1..f24 ──────────────────────────────────────────
 val @fkeys = grep { /^f\d+$/ } @keys
-if (@fkeys >= 24) { p "ok 3 - " . scalar(@fkeys) . " function keys present" }
-else { p "not ok 3 - only " . scalar(@fkeys) . " function keys" }
+assert_ge scalar(@fkeys), 24, "f1..f24 all present"
+
+test_run

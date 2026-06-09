@@ -1,0 +1,10 @@
+[package]
+name = "stryke-gui-sample"
+version = "0.1.0"
+edition = "2026"
+
+[deps.gui]
+path = "../.."
+
+[bin]
+stryke-gui-sample = "main.stk"

@@ -1,0 +1,21 @@
+#!/usr/bin/env stryke
+## benches/bench_keyboard_keys.stk — FFI round-trip micro-bench.
+##
+## `GUI::keyboard_keys()` is the cheapest path through the `gui` cdylib
+## (no enigo init, no OS permissions, no JSON args — just a JSON dump of
+## a static key-name slice). Calling it in a tight `bench { ... } N`
+## block measures the cost of one stryke → cdylib → JSON → stryke
+## round-trip.
+##
+## Discovered by `s bench` (matches the `bench_*.stk` naming convention).
+## Compare against the `bench { 1 + 1 } 1000` baseline in
+## strykelang/examples/project/lib/benchmarks.stk to attribute cost to
+## the FFI boundary vs raw stryke dispatch.
+
+use GUI
+
+p "GUI::keyboard_keys (FFI roundtrip):"
+p bench { GUI::keyboard_keys() } 1000
+
+p "raw stryke baseline (1+1):"
+p bench { 1 + 1 } 1000

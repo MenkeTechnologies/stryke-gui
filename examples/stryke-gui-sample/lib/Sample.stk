@@ -1,0 +1,32 @@
+## lib/Sample.stk — sample helpers around the `gui` package.
+##
+## Pulled in via `use Sample`. Wraps the permission-free corners of
+## `use GUI` (screen geometry, key-name introspection) in named helpers
+## so main.stk + examples/ stay a few lines each and t/ has something
+## meaningful to assert against.
+
+package Sample
+
+## One-line summary of primary display geometry → "screen: WxH (N pixels)".
+fn Sample::format_screen ($w, $h) {
+    my $px = $w * $h
+    "screen: ${w}x${h} (${px} pixels)"
+}
+
+## Integer center of a (w, h) rectangle → ($cx, $cy).
+fn Sample::center ($w, $h) {
+    (int($w / 2), int($h / 2))
+}
+
+## Number of key names in $keys (arrayref) matching $pattern (qr//).
+fn Sample::count_matching ($keys, $pattern) {
+    scalar grep { $_ =~ $pattern } @$keys
+}
+
+## One-line key-name summary → "keys: N total, F function, M media".
+fn Sample::format_keys_summary ($keys) {
+    my $total    = scalar @$keys
+    my $function = Sample::count_matching($keys, qr/^f\d+$/)
+    my $media    = Sample::count_matching($keys, qr/track|playpause|volume|mute/)
+    "keys: ${total} total, ${function} function, ${media} media"
+}

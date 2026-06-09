@@ -1,0 +1,18 @@
+#!/usr/bin/env stryke
+## main.stk — stryke-gui-sample entry point.
+##
+## Demonstrates the project-local `gui` path-dep wired through
+## stryke.toml + stryke.lock and the helpers in lib/Sample.stk.
+## Read-only: only touches the permission-free corners of the GUI
+## surface (`GUI::screen_size`, `GUI::keyboard_keys`).
+
+use GUI
+use Sample
+
+my ($w, $h) = GUI::screen_size()
+my ($cx, $cy) = Sample::center($w, $h)
+my @keys = GUI::keyboard_keys()
+
+p Sample::format_screen($w, $h)
+p "center:  ($cx, $cy)"
+p Sample::format_keys_summary(\@keys)

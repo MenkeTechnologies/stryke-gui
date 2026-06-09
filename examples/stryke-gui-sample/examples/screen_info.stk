@@ -1,0 +1,21 @@
+#!/usr/bin/env stryke
+## examples/screen_info.stk — runnable read-only demo.
+##
+## Same surface as main.stk but tagged as an example so it shows up
+## under `s examples/`. Safe: no input is simulated, only
+## introspection through `GUI::screen_size`, `GUI::mouse_pos`, and
+## `GUI::keyboard_keys`.
+
+use GUI
+use Sample
+
+my ($w, $h)   = GUI::screen_size()
+my ($cx, $cy) = Sample::center($w, $h)
+my ($mx, $my) = GUI::mouse_pos()
+my @keys      = GUI::keyboard_keys()
+
+p "── stryke-gui-sample: screen_info ───────────────────"
+p Sample::format_screen($w, $h)
+p "center:  ($cx, $cy)"
+p "cursor:  ($mx, $my)"
+p Sample::format_keys_summary(\@keys)

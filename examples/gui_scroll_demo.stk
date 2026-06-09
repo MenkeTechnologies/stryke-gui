@@ -2,8 +2,8 @@
 use GUI
 
 
-# GUI demo — wheel events via `mouse_scroll` (vertical) and
-# `mouse_hscroll` (horizontal). Scroll is delivered to whatever
+# GUI demo — wheel events via `GUI::mouse_scroll` (vertical) and
+# `GUI::mouse_hscroll` (horizontal). Scroll is delivered to whatever
 # window has the cursor over it, so click into a scrollable view
 # (your terminal, a browser, a code editor) during the warmup.
 #
@@ -40,5 +40,5 @@ p ""
 p "done."
 p ""
 p "note: many apps require Shift+wheel for horizontal scroll. if"
-p "mouse_hscroll no-ops on your setup, try the chord-based variant:"
+p "GUI::mouse_hscroll no-ops on your setup, try the chord-based variant:"
 p "  GUI::key_down(\"shift\"); GUI::mouse_scroll(5); GUI::key_up(\"shift\")"

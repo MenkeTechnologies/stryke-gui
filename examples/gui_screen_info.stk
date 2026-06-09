@@ -3,7 +3,7 @@ use GUI
 
 
 # GUI demo — read-only introspection of the display and pointer.
-# Exercises every query-shaped builtin in `builtins_gui.rs`:
+# Exercises every query-shaped fn in the stryke-gui cdylib package:
 #
 #   GUI::screen_size()      → [w, h]   primary display dimensions
 #   GUI::mouse_size()       → [w, h]   alias for screen_size

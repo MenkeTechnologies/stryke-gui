@@ -6,7 +6,8 @@ use GUI
 # mouse on a schedule, throttled by on-hours and off-hours windows.
 #
 # Port of /Users/wizard/PycharmProjects/fromShell/activityMaintainer.py
-# from PyAutoGUI to stryke's `mouse_move` builtin (enigo-backed).
+# from PyAutoGUI to stryke-gui's `GUI::mouse_move` (enigo-backed, loaded
+# in-process via the stryke-gui cdylib package).
 # One-for-one feature parity with the original: same flags, same
 # coordinates, same random-jitter behavior at the on/off boundary.
 #
@@ -67,9 +68,9 @@ fn off_hours_pred {
 
 fn movement_loop {
     sleep $sleep_time
-    mouse_move $COORD_1, $COORD_1
+    GUI::mouse_move $COORD_1, $COORD_1
     sleep $sleep_time
-    mouse_move $COORD_2, $COORD_2
+    GUI::mouse_move $COORD_2, $COORD_2
 }
 
 $SIG{INT} = fn {

@@ -18,8 +18,9 @@
 
 GUI automation for stryke — mouse motion/buttons/wheel, keyboard
 press/type/hotkey, screen size + bounds, pixel reads, and screenshots.
-A PyAutoGUI-equivalent surface, opt-in as a package so the stryke core
-binary stays slim and free of X11/Wayland system libraries.
+Shipped as a precompiled cdylib that stryke dlopens in-process on first
+`use GUI`. No subprocess fork per call; the `Enigo` input handle persists
+across calls inside the cdylib for the life of the stryke process.
 
 ### [`strykelang`](https://github.com/MenkeTechnologies/strykelang) &middot; [`stryke-aws`](https://github.com/MenkeTechnologies/stryke-aws)
 
@@ -27,57 +28,67 @@ binary stays slim and free of X11/Wayland system libraries.
 
 ## Table of Contents
 
-- [\[0x00\] Why this is a package, not a builtin](#0x00-why-this-is-a-package-not-a-builtin)
+- [\[0x00\] How this loads](#0x00-how-this-loads)
 - [\[0x01\] Install](#0x01-install)
 - [\[0x02\] Quick start](#0x02-quick-start)
-- [\[0x03\] CLI: `gui`](#0x03-cli-gui)
-- [\[0x04\] API reference](#0x04-api-reference)
-- [\[0x05\] Helper protocol](#0x05-helper-protocol)
-- [\[0x06\] Permissions](#0x06-permissions)
-- [\[0x07\] Examples](#0x07-examples)
-- [\[0x08\] Tests](#0x08-tests)
-- [\[0x09\] Layout](#0x09-layout)
+- [\[0x03\] API reference](#0x03-api-reference)
+- [\[0x04\] Permissions](#0x04-permissions)
+- [\[0x05\] Examples](#0x05-examples)
+- [\[0x06\] Tests](#0x06-tests)
+- [\[0x07\] Build from source](#0x07-build-from-source)
+- [\[0x08\] Layout](#0x08-layout)
 - [\[0xFF\] License](#0xff-license)
 
 ---
 
-## [0x00] Why this is a package, not a builtin
+## [0x00] How this loads
 
-The `enigo` (input) and `xcap` (capture) crates link against the platform
-input/display stack. On Linux that means the X11 **and** Wayland client
-libraries plus xkb, dbus, and PipeWire — a stack of `-dev` packages that
-would otherwise have to be installed before `cargo install strykelang`
-could even build. Baking them into core forces that cost on every user,
-GUI or not.
+`stryke-gui` is a cdylib package: each `extern "C" fn gui__*` in `src/lib.rs`
+is a JSON-string-in / JSON-string-out wrapper around the `mouse` /
+`keyboard` / `capture` modules. On first `use GUI`:
 
-`stryke-gui` follows the `stryke-aws` shape: a thin stryke library spawns
-a small Rust helper binary (`stryke-gui-helper`) per call and parses JSON
-over the pipe. The native deps live only here, opt-in, so the stryke core
-install needs zero external system libraries.
+1. stryke's package resolver finds the installed package in
+   `~/.stryke/store/gui@<version>/`.
+2. The package's `[ffi]` section names the exports.
+3. stryke `dlopen`s `lib/libstryke_gui.{dylib,so}` next to `lib/GUI.stk`.
+4. Every export gets registered in stryke's FFI registry with signature
+   `*const c_char -> *const c_char`.
+5. The `lib/GUI.stk` wrapper just JSON-encodes args, calls the FFI symbol,
+   and parses the JSON return.
+
+Every `GUI::*` call is now a direct function call into the cdylib — no
+`fork(2)`, no `exec(2)`, no JSON-over-pipe round-trip, no `Enigo::new()`
+per invocation. The Enigo input handle is held in a process-global
+`OnceCell<Mutex<Enigo>>` (`src/common.rs::enigo_lock`) and reused across
+calls.
+
+The previous shape (v0.1.x) shipped a `stryke-gui-helper` binary spawned
+once per `GUI::*` call; that path is gone and the helper sources have been
+recast as cdylib exports.
 
 ## [0x01] Install
 
-Linux only — install the system libraries enigo/xcap link against first
-(macOS and Windows need nothing extra):
+Stryke must be installed first (see [strykelang](https://github.com/MenkeTechnologies/strykelang)).
+Then, on macOS or Linux:
 
 ```sh
-sudo apt-get install -y libwayland-dev libxkbcommon-dev libxcb1-dev \
-  libxrandr-dev libxi-dev libxcursor-dev libdbus-1-dev pkg-config
+s pkg install -g github.com/MenkeTechnologies/stryke-gui
 ```
 
-Then build the helper and register the CLIs:
+This fetches the prebuilt release tarball for your host triple
+(`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`), verifies its SHA-256, extracts into
+`~/.stryke/store/gui@<version>/`, and registers the cdylib for `use GUI`.
+No `cargo`, no `rustc`, no per-target build step on the user's machine.
+
+Pin a specific release:
 
 ```sh
-cd ~/RustroverProjects/stryke-gui
-cargo build --release            # produces target/release/stryke-gui-helper
-s pkg install -g .               # installs `gui` and `gui-build` CLIs
+s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.2.0
 ```
 
-Or:
-
-```sh
-make install
-```
+Override the auto-detected host triple (e.g. for musl) via
+`STRYKE_TARGET=x86_64-unknown-linux-musl s pkg install -g github.com/...`.
 
 ## [0x02] Quick start
 
@@ -100,24 +111,7 @@ my ($r, $g, $b) = GUI::pixel(100, 100)
 my $path = GUI::screenshot("/tmp/shot.png")
 ```
 
-## [0x03] CLI: `gui`
-
-`gui` is a thin pass-through to the helper binary, plus a stryke-side
-`gui build`:
-
-```sh
-gui mouse pos                       # {"x":...,"y":...}
-gui screen size                     # {"width":...,"height":...}
-gui mouse move 400 300 --duration 0.5
-gui key type "hello" --interval 0.05
-gui key hotkey ctrl t
-gui pixel 100 100                   # {"r":..,"g":..,"b":..}
-gui screenshot --output /tmp/s.png
-gui build                           # cargo build --release the helper
-gui help                            # helper --help
-```
-
-## [0x04] API reference
+## [0x03] API reference
 
 All functions live in the `GUI::` namespace (`use GUI`). Coordinates use a
 top-left origin; the primary display only.
@@ -176,26 +170,7 @@ top-left origin; the primary display only.
 | `GUI::screenshot($path?)` | `$path`, or `($w, $h, \@rgba)` |
 | `GUI::screenshot_region($l, $t, $w, $h, $path?)` | `$path`, or `($w, $h, \@rgba)` |
 
-## [0x05] Helper protocol
-
-The `.stk` library shells out to `stryke-gui-helper` and parses its
-output:
-
-- **Action** subcommands (move, click, type, …) exit `0` on success.
-- **Query** subcommands print a single JSON line to stdout:
-  - `mouse pos` → `{"x","y"}`
-  - `screen size` → `{"width","height"}`
-  - `screen on-screen X Y` → `{"on_screen":bool}`
-  - `pixel X Y` → `{"r","g","b"}`
-  - `pixel-match …` → `{"match":bool}`
-  - `screenshot` (no `--output`) → `{"width","height","rgba":[…]}`
-  - `key keys` → JSON array of names
-
-Set `STRYKE_GUI_DEBUG=1` to log each helper command to stderr. Set
-`STRYKE_GUI_HELPER=/path/to/stryke-gui-helper` to override binary
-discovery.
-
-## [0x06] Permissions
+## [0x04] Permissions
 
 - **macOS** — the first mouse/keyboard call prompts for **Accessibility**
   access; the first pixel/screenshot call prompts for **Screen Recording**
@@ -206,7 +181,7 @@ discovery.
   (pixel/screen).
 - **X11 (Linux)** and **Windows** — no permission gates.
 
-## [0x07] Examples
+## [0x05] Examples
 
 ```sh
 s examples/gui_screen_info.stk      # read-only display + pointer introspection
@@ -220,33 +195,71 @@ s examples/gui_screenshot.stk       # full + region capture
 s examples/activity_maintainer.stk  # keep a session active
 ```
 
-## [0x08] Tests
+## [0x06] Tests
 
 ```sh
 make test            # cargo test + `s test t/`
 ```
 
-`t/test_gui.stk` covers the argv build + JSON parse plumbing (`key keys`,
-`--version`) — the parts that run without input/screen permissions. The
-mouse/keyboard/pixel ops can't run unattended, so they aren't asserted in
-CI.
+`cargo test` covers the FFI plumbing (JSON-in/out wrapper, error-on-panic
+behavior, free-cstring contract, region parsing). `t/test_gui.stk` covers
+the end-to-end stryke → FFI → cdylib call path via the permission-free
+`GUI::keyboard_keys()` query. Mouse/keyboard/pixel ops can't run unattended
+in CI (they need real OS permissions) so they aren't asserted there.
 
-## [0x09] Layout
+## [0x07] Build from source
+
+Consumers don't need this — the install path fetches a prebuilt
+artifact for the host triple from GitHub Releases. Contributors building
+the cdylib locally:
+
+Linux build deps:
+
+```sh
+sudo apt-get install -y libwayland-dev libxkbcommon-dev libxcb1-dev \
+  libxrandr-dev libxi-dev libxcursor-dev libdbus-1-dev pkg-config \
+  libpipewire-0.3-dev libspa-0.2-dev libegl-dev libgl1-mesa-dev \
+  libgles-dev libgbm-dev libxcb-randr0-dev libxinerama-dev libudev-dev
+```
+
+Then:
+
+```sh
+cd ~/RustroverProjects/stryke-gui
+cargo build --release            # → target/release/libstryke_gui.{dylib,so}
+```
+
+Stryke's FFI loader looks for the cdylib in `lib/`, then `target/release/`,
+then `target/debug/` (see `try_load_ffi_for` in
+`strykelang/strykelang/pkg/commands.rs`). So once `cargo build` produces
+the dev artifact, `s examples/gui_mouse_circle.stk` works against the
+local checkout without a separate install step.
+
+To install the local build into the global store as a drop-in for a
+released version (overwriting whatever `s pkg install -g
+github.com/...` previously placed there):
+
+```sh
+s pkg install -g .
+```
+
+## [0x08] Layout
 
 ```
-stryke.toml            stryke package manifest (name = `gui`)
-Cargo.toml             stryke-gui-helper binary manifest
+stryke.toml            stryke package manifest with [ffi] table
+Cargo.toml             stryke_gui cdylib crate manifest
 src/
-  main.rs              clap CLI + dispatch
-  common.rs            enigo init, button parse, JSON output
+  lib.rs               #[no_mangle] extern "C" gui__* exports + ffi_call wrapper
+  common.rs            persistent Enigo via OnceCell + button parser
   mouse.rs             motion / buttons / wheel / size / pos
   keyboard.rs          key-name table + press / type / hotkey
   capture.rs           pixel + screenshot (xcap)
-lib/GUI.stk            stryke wrappers (shell out + parse JSON)
-bin/gui.stk            `gui` CLI launcher
-bin/gui-build.stk      `gui-build` helper-build launcher
+lib/GUI.stk            stryke wrappers (JSON args → FFI symbol → JSON return)
 examples/              runnable demos
-t/test_gui.stk         plumbing tests
+t/test_gui.stk         plumbing tests (permission-free FFI surface)
+.github/workflows/
+  ci.yml               cargo check/clippy/test/doc per push
+  release.yml          per-triple cdylib build matrix → GitHub Release
 ```
 
 ## [0xFF] License

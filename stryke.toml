@@ -1,15 +1,35 @@
 [package]
 name = "gui"
-version = "0.1.0"
-description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. Opt-in package tier; keeps the stryke core binary slim and free of X11/Wayland deps."
+version = "0.2.0"
+description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. cdylib package — loaded in-process via dlopen on first `use GUI`. No subprocess fork per call; the Enigo input handle persists across calls."
 authors = ["MenkeTechnologies"]
 license = "MIT"
 repository = "https://github.com/MenkeTechnologies/stryke-gui"
 edition = "2026"
 
-[bin]
-gui = "bin/gui.stk"
-gui-build = "bin/gui-build.stk"
+[ffi]
+lib-name = "stryke_gui"
+namespace = "GUI"
+exports = [
+    "gui__mouse_pos",
+    "gui__screen_size",
+    "gui__screen_on_screen",
+    "gui__mouse_move",
+    "gui__mouse_move_rel",
+    "gui__mouse_drag",
+    "gui__mouse_click",
+    "gui__mouse_button_hold",
+    "gui__mouse_scroll",
+    "gui__key_press",
+    "gui__key_down",
+    "gui__key_up",
+    "gui__key_type",
+    "gui__key_hotkey",
+    "gui__key_keys",
+    "gui__pixel",
+    "gui__pixel_match",
+    "gui__screenshot",
+]
 
 [scripts]
 build = "cargo build --release"

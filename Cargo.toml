@@ -1,33 +1,38 @@
 [package]
-name = "stryke-gui-helper"
-version = "0.1.0"
+name = "stryke-gui"
+version = "0.2.0"
 edition = "2021"
-description = "GUI automation bridge binary for the stryke `gui` package"
+description = "GUI automation cdylib for the stryke `gui` package (mouse, keyboard, screen, pixel)"
 authors = ["MenkeTechnologies"]
 license = "MIT"
 repository = "https://github.com/MenkeTechnologies/stryke-gui"
 homepage = "https://menketechnologies.github.io/stryke-gui/"
 publish = false
 
-[[bin]]
-name = "stryke-gui-helper"
-path = "src/main.rs"
+# Shipped as a precompiled cdylib loaded in-process by stryke via dlopen.
+# Each `#[no_mangle] extern "C" fn gui__*(args_json: *const c_char) -> *const c_char`
+# is registered as a stryke-callable function on first `use GUI`. Replaces the
+# previous fork-per-call subprocess helper, so every GUI::* call avoids one
+# fork(2) + exec(2) + JSON-over-pipe round-trip per invocation, and the
+# `Enigo` input handle persists in `OnceCell` across calls (no re-init).
+[lib]
+name = "stryke_gui"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
 
 [dependencies]
 # enigo = mouse + keyboard synthesis; xcap = screen capture / pixel reads.
 # These link against the platform input/display stack (macOS CGEvent +
 # ScreenCaptureKit, X11 XTest + XGetImage, Wayland virtual-pointer +
-# portal, Win32 SendInput + GDI). Isolating them in this helper keeps the
-# stryke core binary free of X11/Wayland system-lib requirements.
+# portal, Win32 SendInput + GDI). The cdylib model isolates them here so
+# the stryke core binary needs zero X11/Wayland system libs to build.
 enigo = "0.6"
 xcap = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
-clap = { version = "4", default-features = false, features = [
-    "std", "derive", "help", "usage", "error-context",
-] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 anyhow = "1"
+once_cell = "1"
 
 [profile.release]
 opt-level = 3

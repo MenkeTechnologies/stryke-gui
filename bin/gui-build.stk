@@ -1,8 +1,0 @@
-#!/usr/bin/env stryke
-my @_p = split "/", __FILE__
-pop @_p
-pop @_p
-require join("/", @_p) . "/lib/GUI.stk"
-
-my $path = GUI::ensure_built()
-p "stryke-gui: helper ready at $path"

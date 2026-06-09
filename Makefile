@@ -6,10 +6,10 @@ all: release
 help:
 	@printf '%s\n' \
 	  'targets:' \
-	  '  make release   - cargo build --release  (default; produces target/release/stryke-gui-helper)' \
+	  '  make release   - cargo build --release  (default; produces target/release/libstryke_gui.{dylib,so})' \
 	  '  make debug     - cargo build' \
 	  '  make test      - cargo test then `s test t/`' \
-	  '  make install   - `s pkg install -g .` (registers gui/gui-build CLI launchers)' \
+	  '  make install   - `s pkg install -g .` (copies source + cdylib into ~/.stryke/store/gui@<ver>/)' \
 	  '  make clean     - cargo clean'
 
 release:

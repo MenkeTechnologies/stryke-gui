@@ -7,7 +7,7 @@ use anyhow::Result;
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Mouse};
 use serde::Serialize;
 
-use crate::common::make_enigo;
+use crate::common::enigo_lock;
 
 #[derive(Serialize)]
 pub struct Point {
@@ -51,7 +51,7 @@ fn maybe_move_to(e: &mut Enigo, x: Option<i32>, y: Option<i32>) -> Result<(), en
 }
 
 pub fn pos() -> Result<Point> {
-    let e = make_enigo()?;
+    let e = enigo_lock()?;
     let (x, y) = e.location()?;
     Ok(Point {
         x: x as i64,
@@ -60,7 +60,7 @@ pub fn pos() -> Result<Point> {
 }
 
 pub fn screen_size() -> Result<Size> {
-    let e = make_enigo()?;
+    let e = enigo_lock()?;
     let (w, h) = e.main_display()?;
     Ok(Size {
         width: w as i64,
@@ -69,19 +69,19 @@ pub fn screen_size() -> Result<Size> {
 }
 
 pub fn on_screen(x: i32, y: i32) -> Result<bool> {
-    let e = make_enigo()?;
+    let e = enigo_lock()?;
     let (w, h) = e.main_display()?;
     Ok(x >= 0 && y >= 0 && x < w && y < h)
 }
 
 pub fn mv(x: i32, y: i32, duration: f64) -> Result<()> {
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     linear_move(&mut e, x, y, duration)?;
     Ok(())
 }
 
 pub fn mv_rel(dx: i32, dy: i32, duration: f64) -> Result<()> {
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     if duration <= 0.0 {
         e.move_mouse(dx, dy, Coordinate::Rel)?;
     } else {
@@ -92,7 +92,7 @@ pub fn mv_rel(dx: i32, dy: i32, duration: f64) -> Result<()> {
 }
 
 pub fn drag(x: i32, y: i32, duration: f64, button: Button, relative: bool) -> Result<()> {
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     let (sx, sy) = e.location()?;
     let (tx, ty) = if relative { (sx + x, sy + y) } else { (x, y) };
     e.button(button, Direction::Press)?;
@@ -115,7 +115,7 @@ pub fn click(
 ) -> Result<()> {
     let clicks = clicks.max(1);
     let interval = interval.max(0.0);
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     maybe_move_to(&mut e, x, y)?;
     for i in 0..clicks {
         e.button(button, Direction::Click)?;
@@ -127,7 +127,7 @@ pub fn click(
 }
 
 pub fn button_hold(button: Button, press: bool) -> Result<()> {
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     let dir = if press {
         Direction::Press
     } else {
@@ -143,7 +143,7 @@ pub fn scroll(clicks: i32, x: Option<i32>, y: Option<i32>, horizontal: bool) -> 
     } else {
         Axis::Vertical
     };
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     maybe_move_to(&mut e, x, y)?;
     e.scroll(clicks, axis)?;
     Ok(())

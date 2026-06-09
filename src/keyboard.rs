@@ -13,7 +13,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use enigo::{Direction, Key, Keyboard};
 
-use crate::common::make_enigo;
+use crate::common::enigo_lock;
 
 pub const KEYBOARD_KEY_NAMES: &[&str] = &[
     // Whitespace / edit
@@ -407,7 +407,7 @@ pub fn press(name: &str, presses: i64, interval: f64) -> Result<()> {
     let presses = presses.max(1);
     let interval = interval.max(0.0);
     let key = parse_key(name)?;
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     for i in 0..presses {
         e.key(key, Direction::Click)?;
         if interval > 0.0 && i + 1 < presses {
@@ -419,21 +419,21 @@ pub fn press(name: &str, presses: i64, interval: f64) -> Result<()> {
 
 pub fn down(name: &str) -> Result<()> {
     let key = parse_key(name)?;
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     e.key(key, Direction::Press)?;
     Ok(())
 }
 
 pub fn up(name: &str) -> Result<()> {
     let key = parse_key(name)?;
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     e.key(key, Direction::Release)?;
     Ok(())
 }
 
 pub fn type_text(text: &str, interval: f64) -> Result<()> {
     let interval = interval.max(0.0);
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     if interval <= 0.0 {
         e.text(text)?;
     } else {
@@ -458,7 +458,7 @@ pub fn hotkey(names: &[String], interval: f64) -> Result<()> {
     let interval = interval.max(0.0);
     let keys: Result<Vec<Key>> = names.iter().map(|n| parse_key(n)).collect();
     let keys = keys?;
-    let mut e = make_enigo()?;
+    let mut e = enigo_lock()?;
     for (i, k) in keys.iter().enumerate() {
         e.key(*k, Direction::Press)?;
         if interval > 0.0 && i + 1 < keys.len() {

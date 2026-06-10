@@ -387,8 +387,18 @@ mod tests {
         let v = json!({"region": [big, big, 10, 10]});
         let got = region_from_value(&v).expect("should parse");
         // i32::MAX + 1 wraps to i32::MIN under `as i32`.
-        assert_eq!(got.0, i32::MIN, "left should error or saturate; got {}", got.0);
-        assert_eq!(got.1, i32::MIN, "top should error or saturate; got {}", got.1);
+        assert_eq!(
+            got.0,
+            i32::MIN,
+            "left should error or saturate; got {}",
+            got.0
+        );
+        assert_eq!(
+            got.1,
+            i32::MIN,
+            "top should error or saturate; got {}",
+            got.1
+        );
     }
 
     /// `ffi_call` parses the input as JSON via `serde_json::from_slice`. If
@@ -405,6 +415,6 @@ mod tests {
             // Handler sees Value::Null, NOT an error.
             Ok(json!({ "saw_null": v.is_null() }))
         }));
-        assert_eq!(out["saw_null"].as_bool().unwrap(), true);
+        assert!(out["saw_null"].as_bool().unwrap());
     }
 }

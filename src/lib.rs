@@ -418,3 +418,125 @@ mod tests {
         assert!(out["saw_null"].as_bool().unwrap());
     }
 }
+
+/// Bug-class pins for the **public FFI dispatch contract** — what `.stk`
+/// scripts and stryke's `rust_ffi.rs::load_cdylib` bridge depend on.
+///
+/// These are deliberately separated from `mod tests` above: those tests
+/// cover internal helpers (`region_from_value`, `ffi_call`); this module
+/// tests the `extern "C"` exports themselves the way the dlopen consumer
+/// would, surfacing regressions that internal-helper tests would miss.
+///
+/// Nothing here exercises a real display or input device — `gui__key_keys`
+/// is a constant-string-table return, so it runs identically on headless
+/// CI runners (Linux + macOS GitHub Actions).
+#[cfg(test)]
+mod ffi_dispatch_invariants {
+    use super::*;
+
+    /// Free an FFI return pointer and parse the bytes as JSON. Mirrors what
+    /// stryke's bridge does on every call.
+    fn read_and_free(p: *const c_char) -> Value {
+        assert!(!p.is_null(), "FFI export returned a null pointer");
+        let bytes = unsafe { CStr::from_ptr(p).to_bytes().to_vec() };
+        unsafe { stryke_free_cstring(p as *mut c_char) };
+        serde_json::from_slice(&bytes).expect("FFI return must be valid JSON")
+    }
+
+    /// **Bug class: public discovery contract drift.**
+    ///
+    /// `gui__key_keys` is how `.stk` scripts learn which key names they can
+    /// pass to `gui key press/down/up`. The cdylib commits to returning a
+    /// JSON **array of strings** — refactoring `KEYBOARD_KEY_NAMES` to a
+    /// struct, enum, or object (or accidentally wrapping it in
+    /// `{"names": [...]}`) would silently break every script that iterates
+    /// the return value as an array.
+    ///
+    /// Not a mirror test: a mirror would just compare lengths against the
+    /// constant. This test asserts the **JSON shape contract** (array,
+    /// every element is a string, contains specific cross-platform anchor
+    /// names) AND the **FFI memory contract** (non-null pointer, valid
+    /// UTF-8, freeable via `stryke_free_cstring`). A regression that
+    /// changed the export to return a JSON object or omitted an anchor key
+    /// would fail here.
+    #[test]
+    fn gui_key_keys_returns_json_array_of_strings_with_cross_platform_anchors() {
+        let v = read_and_free(gui__key_keys(std::ptr::null()));
+        let arr = v
+            .as_array()
+            .expect("gui__key_keys must return a JSON array (not object/null)");
+        assert!(
+            !arr.is_empty(),
+            "gui__key_keys must not return an empty array (would mean .stk discovery is dead)"
+        );
+        for (i, e) in arr.iter().enumerate() {
+            assert!(
+                e.is_string(),
+                "gui__key_keys element {i} must be a string, got {e:?}"
+            );
+        }
+        // Anchor: names that must be in the table on every supported OS. If
+        // someone reorders the const into a struct, these go missing.
+        let set: std::collections::HashSet<&str> = arr.iter().filter_map(|e| e.as_str()).collect();
+        for anchor in ["enter", "tab", "space", "ctrl", "shift", "f1"] {
+            assert!(
+                set.contains(anchor),
+                "gui__key_keys output missing anchor {anchor:?} — public discovery contract broke"
+            );
+        }
+    }
+
+    /// **Bug class: FFI tolerates non-object top-level JSON without panic.**
+    ///
+    /// stryke's bridge always passes a NUL-terminated CString, but a bare
+    /// JSON literal at top level (`42`, `"hi"`, `true`, `null`, `[]`) is
+    /// still legal JSON. `ffi_call` parses with `serde_json::from_slice`
+    /// and the handler then indexes the result with `v["x"]`. If any
+    /// handler's parse path assumed object-only input via
+    /// `as_object().unwrap()` we'd panic — though the panic would be
+    /// swallowed into a `{"error": "panicked"}` JSON return. This test
+    /// pins that **bare top-level JSON literals do NOT panic the FFI**
+    /// and produce the valid array return.
+    ///
+    /// Not a mirror: tests the behavior across multiple non-object
+    /// top-level shapes (`42`, `true`, `[]`) in one shot, against the real
+    /// extern symbol (`gui__key_keys` ignores args, so it's safe — it
+    /// can't trigger real GUI side effects). Catches a regression where
+    /// someone tightens `ffi_call` to require object input without
+    /// updating the panic-catch arm.
+    #[test]
+    fn gui_key_keys_tolerates_non_object_args_without_panic() {
+        for bad in ["42", "true", "null", "\"hi\"", "[]"] {
+            let cs = CString::new(bad).unwrap();
+            let v = read_and_free(gui__key_keys(cs.as_ptr()));
+            // gui__key_keys ignores its input, so on ANY parseable JSON it
+            // must still return the key-name array. A panic would have
+            // been mapped to `{"error": "..."}` by ffi_call's
+            // catch_unwind, which would fail this assertion.
+            assert!(
+                v.is_array(),
+                "gui__key_keys must return an array for input {bad:?}, got {v:?}"
+            );
+        }
+    }
+
+    /// **Bug class: `stryke_free_cstring` is null-safe under repeat.**
+    ///
+    /// stryke's bridge guards null before calling `stryke_free_cstring`,
+    /// but the cdylib export itself promises null-safety per its
+    /// `# Safety` doc. The existing `free_cstring_handles_null` test
+    /// calls it once; this test hammers it many times to surface any
+    /// state regression (someone adds a global counter, allocator, or
+    /// panic on null).
+    ///
+    /// Not a mirror: stresses the contract instead of just calling once.
+    /// Catches a regression where the null branch starts touching shared
+    /// state, or where someone replaces the early return with a
+    /// `CString::from_raw(p)` that would segfault on null.
+    #[test]
+    fn stryke_free_cstring_null_is_idempotent_under_repeat() {
+        for _ in 0..1024 {
+            unsafe { stryke_free_cstring(std::ptr::null_mut()) };
+        }
+    }
+}

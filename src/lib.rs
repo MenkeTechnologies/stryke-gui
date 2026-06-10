@@ -357,4 +357,54 @@ mod tests {
         let v = json!({});
         assert!(region_from_value(&v).is_none());
     }
+
+    /// `region_from_value` casts width/height with `as u32`. A JSON value
+    /// that fits in i64 but exceeds u32::MAX (e.g. 5_000_000_000) will be
+    /// silently truncated by `as u32` — the caller asks for a 5 GP region
+    /// and `capture::screenshot_*` crops to a different small value with no
+    /// error. Pins the current behavior: failing this test means someone
+    /// added input validation (good), passing means the silent truncation
+    /// bug is still live and should be fixed by validating range before
+    /// the cast.
+    #[test]
+    fn region_from_value_silently_truncates_width_above_u32_max() {
+        let big: i64 = (u32::MAX as i64) + 1; // 4_294_967_296
+        let v = json!({"region": [0, 0, big, 100]});
+        let got = region_from_value(&v).expect("should parse");
+        // Bug evidence: width comes back as 0 instead of error or saturation.
+        assert_eq!(got.2, 0, "width should saturate or error; got {}", got.2);
+        // Height fits, sanity-check it wasn't broken.
+        assert_eq!(got.3, 100);
+    }
+
+    /// Same bug class on the top-left coords: an i64 region origin past
+    /// i32::MAX gets `as i32`-truncated into a small (possibly negative)
+    /// value, sending the capture to a wildly different region with no
+    /// error. Pin the current behavior so a future fix is intentional.
+    #[test]
+    fn region_from_value_silently_truncates_left_top_above_i32_max() {
+        let big: i64 = (i32::MAX as i64) + 1; // 2_147_483_648
+        let v = json!({"region": [big, big, 10, 10]});
+        let got = region_from_value(&v).expect("should parse");
+        // i32::MAX + 1 wraps to i32::MIN under `as i32`.
+        assert_eq!(got.0, i32::MIN, "left should error or saturate; got {}", got.0);
+        assert_eq!(got.1, i32::MIN, "top should error or saturate; got {}", got.1);
+    }
+
+    /// `ffi_call` parses the input as JSON via `serde_json::from_slice`. If
+    /// parsing fails, the handler still runs with `Value::Null` instead of
+    /// erroring — meaning a caller that mis-serializes its dict gets the
+    /// default-fallback path silently. This pins that fallback behavior so
+    /// it's intentional (not an accident), and catches a future regression
+    /// that would (correctly) start erroring on garbage input — at which
+    /// point this test should be updated alongside the spec change.
+    #[test]
+    fn ffi_call_swallows_invalid_json_into_null_value() {
+        let in_str = CString::new("not json at all {{{").unwrap();
+        let out = read_and_free(ffi_call(in_str.as_ptr(), |v| {
+            // Handler sees Value::Null, NOT an error.
+            Ok(json!({ "saw_null": v.is_null() }))
+        }));
+        assert_eq!(out["saw_null"].as_bool().unwrap(), true);
+    }
 }

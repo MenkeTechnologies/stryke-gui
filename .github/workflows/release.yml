@@ -104,7 +104,7 @@ jobs:
           STEM="stryke-gui-${TAG}-${TRIPLE}"
           mkdir -p "staging/${STEM}/lib" "staging/${STEM}/bin"
           cp stryke.toml "staging/${STEM}/"
-          cp lib/GUI.stk "staging/${STEM}/lib/"
+          cp lib/*.stk "staging/${STEM}/lib/"
           cp "target/${TRIPLE}/release/${{ matrix.dylib }}" "staging/${STEM}/lib/"
           cp bin/gui-test.stk "staging/${STEM}/bin/"
           ARCHIVE="${STEM}.tar.gz"

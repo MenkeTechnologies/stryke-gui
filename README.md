@@ -48,7 +48,7 @@ is a JSON-string-in / JSON-string-out wrapper around the `mouse` /
 `keyboard` / `capture` modules. On first `use GUI`:
 
 1. stryke's package resolver finds the installed package in
-   `~/.stryke/store/gui@<version>/`.
+   `~/.stryke/store/stryke-gui@<version>/`.
 2. The package's `[ffi]` section names the exports.
 3. stryke `dlopen`s `lib/libstryke_gui.{dylib,so}` next to `lib/GUI.stk`.
 4. Every export gets registered in stryke's FFI registry with signature
@@ -78,13 +78,13 @@ s pkg install -g github.com/MenkeTechnologies/stryke-gui
 This fetches the prebuilt release tarball for your host triple
 (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu`), verifies its SHA-256, extracts into
-`~/.stryke/store/gui@<version>/`, and registers the cdylib for `use GUI`.
+`~/.stryke/store/stryke-gui@<version>/`, and registers the cdylib for `use GUI`.
 No `cargo`, no `rustc`, no per-target build step on the user's machine.
 
 Pin a specific release:
 
 ```sh
-s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.2.3
+s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.3.1
 ```
 
 Override the auto-detected host triple (e.g. for musl) via
@@ -257,6 +257,7 @@ src/
 lib/GUI.stk            stryke wrappers (JSON args → FFI symbol → JSON return)
 examples/              runnable demos
 t/test_gui.stk         plumbing tests (permission-free FFI surface)
+bin/gui-test.stk       installable smoke-test launcher (~/.stryke/bin/gui-test)
 .github/workflows/
   ci.yml               cargo check/clippy/test/doc per push
   release.yml          per-triple cdylib build matrix → GitHub Release

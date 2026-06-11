@@ -352,6 +352,50 @@ mod tests {
         assert!(region_from_value(&v).is_none());
     }
 
+    /// **Bug class: off-by-one on the OTHER side of the length check.**
+    /// The guard is `arr.len() != 4`, so a 5+-element region (e.g. a caller
+    /// appending a stray trailing field) is rejected to `None` exactly like
+    /// the short-array case. Only the short side was pinned; this nails the
+    /// over-long side so a future `>= 4` / `> 4` rewrite (which would start
+    /// accepting `[l, t, w, h, junk]` and read the wrong 4 slots) is caught.
+    #[test]
+    fn region_from_value_rejects_over_long_arrays() {
+        let v = json!({"region": [1, 2, 3, 4, 5]});
+        assert!(region_from_value(&v).is_none());
+    }
+
+    /// **Bug class: JSON number-type coercion silently discards the region.**
+    /// `serde_json::Value::as_i64()` returns `None` for a *fractional* number
+    /// (`100.5`), so a single non-integer coordinate makes `region_from_value`
+    /// return `None` for the WHOLE region. Downstream (`gui__screenshot`) treats
+    /// `None` as "no region" and captures the FULL screen instead of the
+    /// requested crop — a silent, surprising widening, not an error. This pins
+    /// that a float coordinate does not partially parse; if a future change
+    /// starts `as_f64().map(|f| f as i32)`-coercing, this test forces the
+    /// behavior change to be deliberate.
+    #[test]
+    fn region_from_value_drops_whole_region_on_fractional_coord() {
+        let v = json!({"region": [0, 0, 100.5, 200]});
+        assert!(
+            region_from_value(&v).is_none(),
+            "fractional width must collapse the region to None (full-screen \
+             fallback), not silently truncate to a partial crop"
+        );
+    }
+
+    /// **Bug class: stringly-typed coordinate silently discards the region.**
+    /// A `.stk` caller that builds the region with a string element
+    /// (`"10"` instead of `10`) hits `as_i64() == None` and the entire region
+    /// is dropped to `None` → full-screen capture. Distinct from the
+    /// fractional case: this is the wrong-JSON-*type* path, not the
+    /// wrong-number-*subtype* path. Pins that no string→int coercion is
+    /// silently performed at the FFI boundary.
+    #[test]
+    fn region_from_value_drops_whole_region_on_string_coord() {
+        let v = json!({"region": ["10", 20, 100, 200]});
+        assert!(region_from_value(&v).is_none());
+    }
+
     #[test]
     fn region_from_value_returns_none_when_absent() {
         let v = json!({});

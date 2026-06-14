@@ -92,6 +92,13 @@ pub extern "C" fn gui__screen_size(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__displays(args: *const c_char) -> *const c_char {
+    ffi_call(args, |_| {
+        Ok(json!({ "displays": serde_json::to_value(capture::displays()?)? }))
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn gui__screen_on_screen(args: *const c_char) -> *const c_char {
     ffi_call(args, |v| {
         let x = v["x"].as_i64().unwrap_or(0) as i32;

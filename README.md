@@ -177,6 +177,12 @@ top-left origin; the primary display only.
 | `GUI::clipboard_get()` | clipboard text (`""` if none) |
 | `GUI::clipboard_set($text)` | `1` |
 
+### Displays
+
+| Function | Returns |
+|----------|---------|
+| `GUI::displays()` | one hash per monitor: `{ id, name, x, y, width, height, scale, primary }` |
+
 ## [0x04] Permissions
 
 - **macOS** — the first mouse/keyboard call prompts for **Accessibility**

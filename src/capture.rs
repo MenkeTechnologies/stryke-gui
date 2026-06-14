@@ -85,6 +85,39 @@ pub fn screenshot_raw(region: Option<(i32, i32, u32, u32)>) -> Result<Screenshot
     })
 }
 
+#[derive(Serialize)]
+pub struct Display {
+    pub id: u32,
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f32,
+    pub primary: bool,
+}
+
+/// Enumerate every connected monitor with its virtual-desktop position, size,
+/// HiDPI scale, and which one is primary. `GUI::screen_size` only reports the
+/// primary display; this covers multi-monitor layouts.
+pub fn displays() -> Result<Vec<Display>> {
+    let mons = xcap::Monitor::all().map_err(|e| anyhow!("display enumeration failed: {e}"))?;
+    let mut out = Vec::with_capacity(mons.len());
+    for m in mons {
+        out.push(Display {
+            id: m.id().unwrap_or(0),
+            name: m.name().unwrap_or_default(),
+            x: m.x().unwrap_or(0),
+            y: m.y().unwrap_or(0),
+            width: m.width().unwrap_or(0),
+            height: m.height().unwrap_or(0),
+            scale: m.scale_factor().unwrap_or(1.0),
+            primary: m.is_primary().unwrap_or(false),
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

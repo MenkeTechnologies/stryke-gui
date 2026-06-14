@@ -44,6 +44,12 @@ fn GUI::screen_size {
     ($o->{width}, $o->{height})
 }
 
+## Enumerate all monitors. Each: { id, name, x, y, width, height, scale,
+## primary }. screen_size only reports the primary display.
+fn GUI::displays {
+    @{ GUI::_decode("displays", gui__displays("{}"))->{displays} }
+}
+
 ## Alias for screen_size (pyautogui's `size()` spelling).
 fn GUI::mouse_size {
     GUI::screen_size()

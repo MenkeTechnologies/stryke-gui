@@ -13,6 +13,7 @@ namespace = "GUI"
 exports = [
     "gui__clipboard_get",
     "gui__clipboard_set",
+    "gui__displays",
     "gui__key_down",
     "gui__key_hotkey",
     "gui__key_keys",

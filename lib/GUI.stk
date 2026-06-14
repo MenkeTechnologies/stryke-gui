@@ -50,6 +50,15 @@ fn GUI::displays {
     @{ GUI::_decode("displays", gui__displays("{}"))->{displays} }
 }
 
+## Screenshot a specific monitor by $id (from GUI::displays). With $path,
+## writes a PNG and returns the path; otherwise returns ($w, $h, \@rgba).
+fn GUI::display_screenshot ($id, $path = undef) {
+    var %args = (display => $id)
+    $args{output} = $path if defined $path
+    val $o = GUI::_decode("display_screenshot", gui__display_screenshot(to_json(\%args)))
+    defined $path ? $o->{path} : ($o->{width}, $o->{height}, $o->{rgba})
+}
+
 ## Alias for screen_size (pyautogui's `size()` spelling).
 fn GUI::mouse_size {
     GUI::screen_size()

@@ -97,6 +97,29 @@ pub struct Display {
     pub primary: bool,
 }
 
+fn monitor_by_id(id: u32) -> Result<xcap::Monitor> {
+    let mons = xcap::Monitor::all().map_err(|e| anyhow!("display enumeration failed: {e}"))?;
+    mons.into_iter()
+        .find(|m| m.id().unwrap_or(0) == id)
+        .ok_or_else(|| anyhow!("no display with id {id}"))
+}
+
+/// Save a full capture of the monitor with `id` (from `displays`) to `path`.
+pub fn display_screenshot_to_file(id: u32, path: &str) -> Result<String> {
+    monitor_by_id(id)?.capture_image()?.save(path)?;
+    Ok(path.to_string())
+}
+
+/// Capture the monitor with `id` as a `{width, height, rgba}` payload.
+pub fn display_screenshot_raw(id: u32) -> Result<ScreenshotRaw> {
+    let img = monitor_by_id(id)?.capture_image()?;
+    Ok(ScreenshotRaw {
+        width: img.width(),
+        height: img.height(),
+        rgba: img.into_raw(),
+    })
+}
+
 /// Enumerate every connected monitor with its virtual-desktop position, size,
 /// HiDPI scale, and which one is primary. `GUI::screen_size` only reports the
 /// primary display; this covers multi-monitor layouts.

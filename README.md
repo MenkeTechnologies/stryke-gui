@@ -182,6 +182,7 @@ top-left origin; the primary display only.
 | Function | Returns |
 |----------|---------|
 | `GUI::displays()` | one hash per monitor: `{ id, name, x, y, width, height, scale, primary }` |
+| `GUI::display_screenshot($id, $path?)` | `$path`, or `($w, $h, \@rgba)` — capture a specific monitor by id |
 
 ## [0x04] Permissions
 

@@ -99,6 +99,21 @@ pub extern "C" fn gui__displays(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__display_screenshot(args: *const c_char) -> *const c_char {
+    ffi_call(args, |v| {
+        let id = v["display"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing display (a monitor id from displays())"))?
+            as u32;
+        if let Some(path) = v["output"].as_str() {
+            Ok(json!({ "path": capture::display_screenshot_to_file(id, path)? }))
+        } else {
+            Ok(serde_json::to_value(capture::display_screenshot_raw(id)?)?)
+        }
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn gui__screen_on_screen(args: *const c_char) -> *const c_char {
     ffi_call(args, |v| {
         let x = v["x"].as_i64().unwrap_or(0) as i32;

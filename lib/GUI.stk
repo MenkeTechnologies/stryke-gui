@@ -257,3 +257,16 @@ fn GUI::screenshot_region ($l, $t, $w, $h, $path = undef) {
     }
     ($o->{width}, $o->{height}, $o->{rgba})
 }
+
+# ── clipboard ────────────────────────────────────────────────────────
+
+## Current clipboard text ("" when the clipboard holds no text).
+fn GUI::clipboard_get {
+    GUI::_decode("clipboard_get", gui__clipboard_get("{}"))->{text}
+}
+
+## Replace the clipboard text with $text. Returns 1.
+fn GUI::clipboard_set ($text) {
+    GUI::_decode("clipboard_set", gui__clipboard_set(to_json({ text => $text })))
+    1
+}

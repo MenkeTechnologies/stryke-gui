@@ -15,6 +15,7 @@
 //! see `common.rs::enigo_lock`).
 
 mod capture;
+mod clipboard;
 mod common;
 mod keyboard;
 mod mouse;
@@ -212,6 +213,20 @@ pub extern "C" fn gui__key_type(args: *const c_char) -> *const c_char {
         let text = v["text"].as_str().unwrap_or("").to_string();
         let interval = v["interval"].as_f64().unwrap_or(0.0);
         keyboard::type_text(&text, interval)?;
+        Ok(json!({}))
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn gui__clipboard_get(args: *const c_char) -> *const c_char {
+    ffi_call(args, |_| Ok(json!({ "text": clipboard::get()? })))
+}
+
+#[no_mangle]
+pub extern "C" fn gui__clipboard_set(args: *const c_char) -> *const c_char {
+    ffi_call(args, |v| {
+        let text = v["text"].as_str().unwrap_or("");
+        clipboard::set(text)?;
         Ok(json!({}))
     })
 }

@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![stryke](https://img.shields.io/badge/stryke-package-cyan.svg)](https://github.com/MenkeTechnologies/strykelang)
 
-### `[GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL]`
+### `[GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL + CLIPBOARD]`
 
 > *"PyAutoGUI, one stryke pipe away."*
 
@@ -169,6 +169,13 @@ top-left origin; the primary display only.
 | `GUI::pixel_matches_color($x, $y, [$r,$g,$b], $tol=0)` | `1` / `0` |
 | `GUI::screenshot($path?)` | `$path`, or `($w, $h, \@rgba)` |
 | `GUI::screenshot_region($l, $t, $w, $h, $path?)` | `$path`, or `($w, $h, \@rgba)` |
+
+### Clipboard
+
+| Function | Returns |
+|----------|---------|
+| `GUI::clipboard_get()` | clipboard text (`""` if none) |
+| `GUI::clipboard_set($text)` | `1` |
 
 ## [0x04] Permissions
 

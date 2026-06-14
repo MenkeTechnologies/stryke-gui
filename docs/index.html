@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <meta name="description" content="stryke-gui — GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL. PyAutoGUI-equivalent surface for stryke: mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, and screenshots. Opt-in package — the native input/display deps (enigo, xcap) live in a sidecar binary so stryke core stays slim and free of X11/Wayland system libraries.">
+  <meta name="description" content="stryke-gui — GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL + CLIPBOARD. PyAutoGUI-equivalent surface for stryke: mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, screenshots, and clipboard. Opt-in package — the native input/display deps (enigo, xcap, arboard) ship as a Rust cdylib that stryke dlopens in-process on first `use GUI`.">
   <title>stryke-gui — Documentation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,7 +74,7 @@
     <header class="tutorial-header">
       <div class="tutorial-header-inner">
         <div>
-          <h1 class="tutorial-brand">// STRYKE-GUI &mdash; GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL</h1>
+          <h1 class="tutorial-brand">// STRYKE-GUI &mdash; GUI AUTOMATION FOR STRYKE // MOUSE + KEYBOARD + SCREEN + PIXEL + CLIPBOARD</h1>
           <nav class="tutorial-crumbs" aria-label="Breadcrumb">
             <span class="current">Docs</span>
             <span class="sep">/</span>
@@ -86,7 +86,7 @@
             <span class="sep">/</span>
             <a href="https://github.com/MenkeTechnologies/MenkeTechnologiesMeta" target="_blank" rel="noopener noreferrer">Meta</a>
           </nav>
-          <p class="docs-build-line">stryke package · CLI launcher <code>gui</code> · Rust helper <code>stryke-gui-helper</code> · opt-in (kept out of stryke core)</p>
+          <p class="docs-build-line">stryke package · cdylib <code>libstryke_gui.{dylib,so}</code> · dlopen'd in-process on <code>use GUI</code> · opt-in (kept out of stryke core)</p>
         </div>
         <div class="tutorial-toolbar">
           <button type="button" class="btn btn-secondary" id="btnTheme" title="Toggle light/dark">Theme</button>
@@ -108,24 +108,23 @@
 
     <main class="tutorial-main">
       <h2 class="tutorial-title"><span class="step-hash">&gt;_</span>STRYKE-GUI</h2>
-      <p class="tutorial-subtitle"><strong>PyAutoGUI, one stryke pipe away.</strong> GUI automation for stryke — mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, and screenshots. A PyAutoGUI-equivalent surface, opt-in as a package so the stryke core binary stays slim and free of X11/Wayland system libraries. The stryke side is a thin shell-out wrapper; the native input/display code (<code>enigo</code> + <code>xcap</code>) lives in the <code>stryke-gui-helper</code> sidecar.</p>
+      <p class="tutorial-subtitle"><strong>PyAutoGUI, one <code>use GUI</code> away.</strong> GUI automation for stryke — mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, screenshots, and clipboard. A PyAutoGUI-equivalent surface, opt-in as a package so the stryke core binary stays slim and free of X11/Wayland system libraries. It ships as a Rust cdylib that stryke <code>dlopen</code>s in-process on first <code>use GUI</code>; the native input/display code (<code>enigo</code> + <code>xcap</code> + <code>arboard</code>) lives in <code>libstryke_gui.{dylib,so}</code>.</p>
 
       <section class="tutorial-section">
         <h2>Install</h2>
-        <p>Linux only — install the system libraries <code>enigo</code> / <code>xcap</code> link against first (macOS and Windows need nothing extra):</p>
+        <p>From a release (no rustc on the consumer machine) — fetches the prebuilt cdylib for your host triple, verifies its SHA-256, extracts into <code>~/.stryke/store/stryke-gui@&lt;version&gt;/</code>, and registers it for <code>use GUI</code>:</p>
+<pre>s pkg install -g github.com/MenkeTechnologies/stryke-gui</pre>
+        <p>Contributors building the cdylib locally need the Linux system libraries <code>enigo</code> / <code>xcap</code> link against first (macOS and Windows need nothing extra):</p>
 <pre>sudo apt-get install -y libwayland-dev libxkbcommon-dev libxcb1-dev \
-  libxrandr-dev libxi-dev libxcursor-dev libdbus-1-dev pkg-config</pre>
-        <p>Then build the helper and register the CLIs:</p>
-<pre>cd ~/RustroverProjects/stryke-gui
-cargo build --release            # produces target/release/stryke-gui-helper
-s pkg install -g .               # installs `gui` and `gui-build` CLIs
+  libxrandr-dev libxi-dev libxcursor-dev libdbus-1-dev pkg-config
+
+cd ~/RustroverProjects/stryke-gui
+cargo build --release            # produces target/release/libstryke_gui.{dylib,so}
+s pkg install -g .               # cdylib lands in ~/.stryke/store/stryke-gui@&lt;version&gt;/
 
 # one-liner
-make install
-
-# verify
-gui --help</pre>
-        <p>After install, <code>gui</code> is on PATH (assuming <code>~/.stryke/bin/</code> is on PATH). The stryke library is auto-discoverable to any project that depends on the package via <code>[deps] gui = { path = "..." }</code> or, when published, by name.</p>
+make install</pre>
+        <p>The cdylib is dlopened in-process on first <code>use GUI</code> &mdash; no subprocess fork per call. The <code>Enigo</code> input handle persists in a process-global <code>OnceCell&lt;Mutex&lt;Enigo&gt;&gt;</code> across calls. Any stryke script that declares <code>use GUI</code> resolves the package automatically.</p>
       </section>
 
       <section class="tutorial-section">
@@ -149,43 +148,31 @@ my $path = GUI::screenshot("/tmp/shot.png")</pre>
       </section>
 
       <section class="tutorial-section">
-        <h2>CLI: <code>gui</code></h2>
+        <h2>Surface: <code>use GUI</code></h2>
         <table class="example-tbl">
           <tbody>
-            <tr><td>cursor position</td><td><code>gui mouse pos</code> &mdash; <code>{"x":...,"y":...}</code></td></tr>
-            <tr><td>primary display size</td><td><code>gui screen size</code> &mdash; <code>{"width":...,"height":...}</code></td></tr>
-            <tr><td>tweened absolute move</td><td><code>gui mouse move 400 300 --duration 0.5</code></td></tr>
-            <tr><td>type a string with inter-char delay</td><td><code>gui key type "hello" --interval 0.05</code></td></tr>
-            <tr><td>chord hotkey</td><td><code>gui key hotkey ctrl t</code></td></tr>
-            <tr><td>read a single pixel</td><td><code>gui pixel 100 100</code> &mdash; <code>{"r":..,"g":..,"b":..}</code></td></tr>
-            <tr><td>write a PNG to disk</td><td><code>gui screenshot --output /tmp/s.png</code></td></tr>
-            <tr><td>build the helper</td><td><code>gui build</code> &mdash; <code>cargo build --release</code></td></tr>
+            <tr><td>cursor position</td><td><code>my ($x, $y) = GUI::mouse_pos()</code></td></tr>
+            <tr><td>primary display size</td><td><code>my ($w, $h) = GUI::screen_size()</code></td></tr>
+            <tr><td>tweened absolute move</td><td><code>GUI::mouse_move(400, 300, 0.5)</code></td></tr>
+            <tr><td>type a string with inter-char delay</td><td><code>GUI::key_type("hello", 0.05)</code></td></tr>
+            <tr><td>chord hotkey</td><td><code>GUI::key_hotkey("ctrl", "t")</code></td></tr>
+            <tr><td>read a single pixel</td><td><code>my ($r, $g, $b) = GUI::pixel(100, 100)</code></td></tr>
+            <tr><td>write a PNG to disk</td><td><code>my $path = GUI::screenshot("/tmp/s.png")</code></td></tr>
+            <tr><td>clipboard read / write</td><td><code>GUI::clipboard_set("hi"); my $t = GUI::clipboard_get()</code></td></tr>
           </tbody>
         </table>
-        <p>The full flag matrix lives in the <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-cli-gui">README &laquo;CLI: <code>gui</code>&raquo; section</a>.</p>
+        <p>The full API lives in the <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-api-reference">README "API reference" section</a>.</p>
       </section>
 
       <section class="tutorial-section">
         <h2>Why a package, not a builtin</h2>
         <p>The <code>enigo</code> (input) and <code>xcap</code> (capture) crates link against the platform input/display stack. On Linux that means the X11 <strong>and</strong> Wayland client libraries plus xkb, dbus, and PipeWire &mdash; a stack of <code>-dev</code> packages that would otherwise have to be installed before <code>cargo install strykelang</code> could even build. Baking them into core forces that cost on every user, GUI or not.</p>
-        <p><code>stryke-gui</code> follows the <code>stryke-aws</code> shape: a thin stryke library spawns a small Rust helper binary (<code>stryke-gui-helper</code>) per call and parses JSON over the pipe. The native deps live only here, opt-in, so the stryke core install needs zero external system libraries.</p>
+        <p>The stryke side is a thin <code>.stk</code> wrapper that calls <code>gui__*</code> FFI symbols on the cdylib; the native deps live only in <code>libstryke_gui.{dylib,so}</code>, dlopened in-process on first <code>use GUI</code>. Core stryke is never linked against this package's deps, so the stryke core install needs zero external system libraries.</p>
       </section>
 
       <section class="tutorial-section">
-        <h2>Helper protocol</h2>
-        <p>The <code>.stk</code> library shells out to <code>stryke-gui-helper</code> and parses its output. <strong>Action</strong> subcommands (move, click, type, &hellip;) exit <code>0</code> on success. <strong>Query</strong> subcommands print a single JSON line to stdout:</p>
-        <table class="example-tbl">
-          <tbody>
-            <tr><td><code>mouse pos</code></td><td><code>{"x","y"}</code></td></tr>
-            <tr><td><code>screen size</code></td><td><code>{"width","height"}</code></td></tr>
-            <tr><td><code>screen on-screen X Y</code></td><td><code>{"on_screen":bool}</code></td></tr>
-            <tr><td><code>pixel X Y</code></td><td><code>{"r","g","b"}</code></td></tr>
-            <tr><td><code>pixel-match X Y R G B [--tolerance N]</code></td><td><code>{"match":bool}</code></td></tr>
-            <tr><td><code>screenshot</code> (no <code>--output</code>)</td><td><code>{"width","height","rgba":[…]}</code></td></tr>
-            <tr><td><code>key keys</code></td><td>JSON array of recognized key names</td></tr>
-          </tbody>
-        </table>
-        <p>Set <code>STRYKE_GUI_DEBUG=1</code> to log each helper command to stderr. Set <code>STRYKE_GUI_HELPER=/path/to/stryke-gui-helper</code> to override binary discovery.</p>
+        <h2>FFI layer</h2>
+        <p>Each <code>GUI::*</code> wrapper builds a JSON args string and calls a sibling <code>gui__*</code> symbol resolved out of <code>libstryke_gui.{dylib,so}</code>. The cdylib is dlopened in-process on first <code>use GUI</code>; every export has signature <code>extern "C" fn gui__&lt;verb&gt;(*const c_char) -&gt; *const c_char</code>. The <code>Enigo</code> input handle is held in a process-global <code>OnceCell&lt;Mutex&lt;Enigo&gt;&gt;</code> (<code>src/common.rs::enigo_lock</code>) and reused across calls &mdash; no <code>fork(2)</code>, no <code>exec(2)</code>, no <code>Enigo::new()</code> per invocation. Action calls return a success JSON; errors come back as a <code>{error}</code> JSON payload the wrapper <code>die</code>s on.</p>
       </section>
 
       <section class="tutorial-section">
@@ -219,19 +206,17 @@ my $path = GUI::screenshot("/tmp/shot.png")</pre>
       <section class="tutorial-section">
         <h2>Layout</h2>
 <pre>stryke-gui/
-&#9500;&#9472;&#9472; stryke.toml            # stryke package manifest (name = `gui`)
-&#9500;&#9472;&#9472; Cargo.toml             # stryke-gui-helper binary manifest (publish = false)
+&#9500;&#9472;&#9472; stryke.toml            # stryke package manifest with [ffi] table
+&#9500;&#9472;&#9472; Cargo.toml             # cdylib crate manifest (crate-type = ["cdylib"], publish = false)
 &#9500;&#9472;&#9472; src/
-&#9474;   &#9500;&#9472;&#9472; main.rs            # clap CLI + dispatch
-&#9474;   &#9500;&#9472;&#9472; common.rs          # enigo init, button parse, JSON output
+&#9474;   &#9500;&#9472;&#9472; lib.rs            # cdylib — gui__* extern "C" exports + ffi_call wrapper
+&#9474;   &#9500;&#9472;&#9472; common.rs          # persistent Enigo via OnceCell + button parser
 &#9474;   &#9500;&#9472;&#9472; mouse.rs           # motion / buttons / wheel / size / pos
 &#9474;   &#9500;&#9472;&#9472; keyboard.rs        # key-name table + press / type / hotkey
 &#9474;   &#9492;&#9472;&#9472; capture.rs         # pixel + screenshot (xcap)
-&#9500;&#9472;&#9472; lib/GUI.stk            # stryke wrappers (shell out + parse JSON)
-&#9500;&#9472;&#9472; bin/gui.stk            # `gui` CLI launcher
-&#9500;&#9472;&#9472; bin/gui-build.stk      # `gui-build` helper-build launcher
+&#9500;&#9472;&#9472; lib/GUI.stk            # stryke wrappers (JSON args &rarr; FFI symbol &rarr; JSON return)
 &#9500;&#9472;&#9472; examples/              # runnable .stk demos
-&#9500;&#9472;&#9472; t/test_gui.stk         # plumbing tests
+&#9500;&#9472;&#9472; t/test_gui.stk         # plumbing tests (permission-free FFI surface)
 &#9500;&#9472;&#9472; Makefile               # `make install` builds + installs
 &#9492;&#9472;&#9472; docs/                  # this site (GitHub Pages)</pre>
       </section>

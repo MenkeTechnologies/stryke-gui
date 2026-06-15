@@ -470,6 +470,67 @@ fn op_to_hsl(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert HSL back to RGB per the CSS Color spec — the inverse of `to_hsl`.
+/// opts: `h` (degrees, wrapped into [0,360)), `s` and `l` (percent, clamped to
+/// [0,100]). Returns `{r, g, b, hex}` with 0-255 components. Pure.
+fn op_from_hsl(v: Value) -> Result<Value> {
+    let h = v.get("h").and_then(Value::as_f64).unwrap_or(0.0);
+    let s = v
+        .get("s")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    let l = v
+        .get("l")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    // Normalize hue to [0,1).
+    let h = (h.rem_euclid(360.0)) / 360.0;
+    let (r, g, b) = if s == 0.0 {
+        (l, l, l) // achromatic
+    } else {
+        let q = if l < 0.5 {
+            l * (1.0 + s)
+        } else {
+            l + s - l * s
+        };
+        let p = 2.0 * l - q;
+        let hue2rgb = |p: f64, q: f64, mut t: f64| -> f64 {
+            if t < 0.0 {
+                t += 1.0;
+            }
+            if t > 1.0 {
+                t -= 1.0;
+            }
+            if t < 1.0 / 6.0 {
+                p + (q - p) * 6.0 * t
+            } else if t < 0.5 {
+                q
+            } else if t < 2.0 / 3.0 {
+                p + (q - p) * (2.0 / 3.0 - t) * 6.0
+            } else {
+                p
+            }
+        };
+        (
+            hue2rgb(p, q, h + 1.0 / 3.0),
+            hue2rgb(p, q, h),
+            hue2rgb(p, q, h - 1.0 / 3.0),
+        )
+    };
+    let to_u8 = |x: f64| (x * 255.0).round() as u8;
+    let (r, g, b) = (to_u8(r), to_u8(g), to_u8(b));
+    Ok(json!({
+        "r": r,
+        "g": g,
+        "b": b,
+        "hex": format!("#{r:02x}{g:02x}{b:02x}"),
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
@@ -488,6 +549,11 @@ pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__to_hsl(args: *const c_char) -> *const c_char {
     ffi_call(args, op_to_hsl)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_hsl(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_hsl)
 }
 
 #[cfg(test)]
@@ -736,6 +802,55 @@ mod tests {
             &op_to_hsl(json!({"color": [0, 0, 255]})).unwrap(),
             "h",
             240.0,
+        );
+    }
+
+    #[test]
+    fn from_hsl_inverts_to_hsl_for_reference_colors() {
+        // CSS reference HSL → exact RGB + hex.
+        let red = op_from_hsl(json!({"h": 0, "s": 100, "l": 50})).unwrap();
+        assert_eq!(red["r"], json!(255));
+        assert_eq!(red["g"], json!(0));
+        assert_eq!(red["b"], json!(0));
+        assert_eq!(red["hex"], json!("#ff0000"));
+        assert_eq!(
+            op_from_hsl(json!({"h": 240, "s": 100, "l": 50})).unwrap()["hex"],
+            json!("#0000ff")
+        );
+        // Achromatic: s0 → grey scaled by l.
+        assert_eq!(
+            op_from_hsl(json!({"h": 0, "s": 0, "l": 100})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        assert_eq!(
+            op_from_hsl(json!({"h": 0, "s": 0, "l": 0})).unwrap()["hex"],
+            json!("#000000")
+        );
+        // Round-trip: RGB → to_hsl → from_hsl reproduces the original.
+        for rgb in [[18, 52, 86], [200, 100, 50], [0, 128, 0]] {
+            let hsl = op_to_hsl(json!({"color": rgb})).unwrap();
+            let back = op_from_hsl(json!({"h": hsl["h"], "s": hsl["s"], "l": hsl["l"]})).unwrap();
+            assert_eq!(
+                back["r"].as_i64().unwrap(),
+                rgb[0],
+                "r round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["g"].as_i64().unwrap(),
+                rgb[1],
+                "g round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["b"].as_i64().unwrap(),
+                rgb[2],
+                "b round-trips for {rgb:?}"
+            );
+        }
+        // Hue wraps; out-of-range s/l clamp.
+        assert_eq!(
+            op_from_hsl(json!({"h": 360, "s": 100, "l": 50})).unwrap()["hex"],
+            json!("#ff0000"),
+            "360° wraps to 0° (red)"
         );
     }
 }

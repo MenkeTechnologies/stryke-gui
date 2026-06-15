@@ -57,4 +57,15 @@ assert_gt $white->{l}, 99,   "to_hsl: white lightness 100"
 assert_gt GUI::to_hsl([0, 0, 255])->{h}, 239, "to_hsl: blue hue ~240"
 assert_lt GUI::to_hsl([0, 0, 255])->{h}, 241, "to_hsl: blue hue ~240"
 
+# from_hsl: HSL → RGB (inverse of to_hsl).
+assert_eq GUI::from_hsl(0, 100, 50)->{hex},   "#ff0000", "from_hsl: red"
+assert_eq GUI::from_hsl(240, 100, 50)->{hex}, "#0000ff", "from_hsl: blue"
+assert_eq GUI::from_hsl(0, 0, 100)->{hex},    "#ffffff", "from_hsl: white (achromatic)"
+# round-trip: RGB → HSL → RGB reproduces the original.
+val $h = GUI::to_hsl([18, 52, 86])
+val $rt = GUI::from_hsl($h->{h}, $h->{s}, $h->{l})
+assert_eq $rt->{r}, 18, "from_hsl round-trips r"
+assert_eq $rt->{g}, 52, "from_hsl round-trips g"
+assert_eq $rt->{b}, 86, "from_hsl round-trips b"
+
 test_run

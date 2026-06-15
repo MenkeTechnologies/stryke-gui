@@ -1,6 +1,6 @@
 [package]
 name = "stryke-gui"
-version = "0.5.0"
+version = "0.6.0"
 description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. cdylib package — loaded in-process via dlopen on first `use GUI`. No subprocess fork per call; the Enigo input handle persists across calls."
 authors = ["MenkeTechnologies"]
 license = "MIT"
@@ -37,6 +37,7 @@ exports = [
     "gui__parse_color",
     "gui__color_distance",
     "gui__to_hsl",
+    "gui__from_hsl",
 ]
 
 # Installable smoke-test launcher. `s pkg install -g` writes

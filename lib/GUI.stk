@@ -312,3 +312,10 @@ fn GUI::color_distance ($a, $b) {
 fn GUI::to_hsl ($color) {
     GUI::_decode("to_hsl", gui__to_hsl(to_json({ color => $color })))
 }
+
+## Convert HSL back to RGB per the CSS Color spec — inverse of to_hsl. $h is in
+## degrees (wrapped into 0-360), $s and $l in percent (clamped 0-100). Returns a
+## hashref { r, g, b, hex }.
+fn GUI::from_hsl ($h, $s, $l) {
+    GUI::_decode("from_hsl", gui__from_hsl(to_json({ h => $h, s => $s, l => $l })))
+}

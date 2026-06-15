@@ -45,4 +45,16 @@ val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
 assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
 assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"
 
+# to_hsl: RGB → HSL (CSS reference colors). Bounds avoid float-repr fragility.
+val $red = GUI::to_hsl([255, 0, 0])
+assert_eq $red->{h}, 0,   "to_hsl: red hue 0"
+assert_gt $red->{s}, 99,  "to_hsl: red fully saturated"
+assert_gt $red->{l}, 49,  "to_hsl: red lightness ~50"
+assert_lt $red->{l}, 51,  "to_hsl: red lightness ~50"
+val $white = GUI::to_hsl({ r => 255, g => 255, b => 255 })
+assert_lt $white->{s}, 1,    "to_hsl: white is achromatic"
+assert_gt $white->{l}, 99,   "to_hsl: white lightness 100"
+assert_gt GUI::to_hsl([0, 0, 255])->{h}, 239, "to_hsl: blue hue ~240"
+assert_lt GUI::to_hsl([0, 0, 255])->{h}, 241, "to_hsl: blue hue ~240"
+
 test_run

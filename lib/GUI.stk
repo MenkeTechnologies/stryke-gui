@@ -305,3 +305,10 @@ fn GUI::parse_color ($color) {
 fn GUI::color_distance ($a, $b) {
     GUI::_decode("color_distance", gui__color_distance(to_json({ a => $a, b => $b })))
 }
+
+## Convert an RGB color ([r,g,b] arrayref or { r, g, b } hashref, 0-255) to HSL
+## per the CSS Color spec → { h, s, l } (h in degrees 0-360, s and l in percent
+## 0-100). Useful for deriving hover/active shades by nudging lightness.
+fn GUI::to_hsl ($color) {
+    GUI::_decode("to_hsl", gui__to_hsl(to_json({ color => $color })))
+}

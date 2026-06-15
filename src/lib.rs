@@ -432,6 +432,44 @@ fn op_color_distance(v: Value) -> Result<Value> {
     Ok(json!({"manhattan": manhattan, "euclidean": euclidean}))
 }
 
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSL per
+/// the CSS Color spec: `h` in degrees [0,360), `s` and `l` in percent [0,100].
+/// Useful for deriving hover/active shades by nudging lightness. Pure.
+fn op_to_hsl(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (r, g, b) = (ri as f64 / 255.0, gi as f64 / 255.0, bi as f64 / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    let (h, s) = if (max - min).abs() < f64::EPSILON {
+        (0.0, 0.0) // achromatic
+    } else {
+        let d = max - min;
+        let s = if l > 0.5 {
+            d / (2.0 - max - min)
+        } else {
+            d / (max + min)
+        };
+        let h = if (max - r).abs() < f64::EPSILON {
+            (g - b) / d + if g < b { 6.0 } else { 0.0 }
+        } else if (max - g).abs() < f64::EPSILON {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        (h / 6.0, s)
+    };
+    Ok(json!({
+        "h": h * 360.0,
+        "s": s * 100.0,
+        "l": l * 100.0,
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
@@ -445,6 +483,11 @@ pub extern "C" fn gui__parse_color(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
     ffi_call(args, op_color_distance)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_hsl(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_hsl)
 }
 
 #[cfg(test)]
@@ -663,6 +706,37 @@ mod tests {
         assert_eq!(v["euclidean"], json!(5.0), "3-4-5 triangle");
         let same = op_color_distance(json!({"a": [10, 20, 30], "b": [10, 20, 30]})).unwrap();
         assert_eq!(same["manhattan"], json!(0));
+    }
+
+    #[test]
+    fn to_hsl_matches_css_reference_colors() {
+        let approx = |got: &Value, key: &str, want: f64| {
+            let g = got[key].as_f64().unwrap();
+            assert!((g - want).abs() < 0.1, "{key}: got {g}, want {want}");
+        };
+        // Pure red → h0 s100 l50.
+        let red = op_to_hsl(json!({"color": [255, 0, 0]})).unwrap();
+        approx(&red, "h", 0.0);
+        approx(&red, "s", 100.0);
+        approx(&red, "l", 50.0);
+        // Pure green (0,128,0) → h120 s100 l~25.1.
+        let green = op_to_hsl(json!({"color": [0, 128, 0]})).unwrap();
+        approx(&green, "h", 120.0);
+        approx(&green, "s", 100.0);
+        approx(&green, "l", 25.1);
+        // White and black are achromatic (s0), l100 / l0.
+        let white = op_to_hsl(json!({"color": {"r": 255, "g": 255, "b": 255}})).unwrap();
+        approx(&white, "s", 0.0);
+        approx(&white, "l", 100.0);
+        let black = op_to_hsl(json!({"color": [0, 0, 0]})).unwrap();
+        approx(&black, "s", 0.0);
+        approx(&black, "l", 0.0);
+        // Blue → h240.
+        approx(
+            &op_to_hsl(json!({"color": [0, 0, 255]})).unwrap(),
+            "h",
+            240.0,
+        );
     }
 }
 

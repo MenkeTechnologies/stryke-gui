@@ -327,6 +327,126 @@ fn region_from_value(v: &Value) -> Option<(i32, i32, u32, u32)> {
     Some((l, t, w, h))
 }
 
+// ── pure helpers (no display / input) ───────────────────────────────────────
+
+/// Parse a hotkey string `ctrl+shift+a` into `{keys, modifiers, key}` — the
+/// final segment is the main key, the rest are modifiers. Keys are lowercased
+/// and trimmed. Pure.
+fn op_parse_hotkey(v: Value) -> Result<Value> {
+    let s = v
+        .get("hotkey")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("missing hotkey"))?;
+    let keys: Vec<String> = s
+        .split('+')
+        .map(|k| k.trim().to_ascii_lowercase())
+        .filter(|k| !k.is_empty())
+        .collect();
+    if keys.is_empty() {
+        return Err(anyhow::anyhow!("empty hotkey"));
+    }
+    let key = keys[keys.len() - 1].clone();
+    let modifiers: Vec<String> = keys[..keys.len() - 1].to_vec();
+    Ok(json!({"keys": keys, "modifiers": modifiers, "key": key}))
+}
+
+/// Parse a color string `#rgb`, `#rrggbb`, or `rgb(r,g,b)` into
+/// `{r, g, b, hex}`. Pure.
+fn op_parse_color(v: Value) -> Result<Value> {
+    let raw = v
+        .get("color")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("missing color"))?;
+    let s = raw.trim();
+    let (r, g, b) = if let Some(hex) = s.strip_prefix('#') {
+        match hex.len() {
+            3 => {
+                let comp = |c: &str| u8::from_str_radix(&c.repeat(2), 16);
+                (
+                    comp(&hex[0..1]).map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+                    comp(&hex[1..2]).map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+                    comp(&hex[2..3]).map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+                )
+            }
+            6 => (
+                u8::from_str_radix(&hex[0..2], 16)
+                    .map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+                u8::from_str_radix(&hex[2..4], 16)
+                    .map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+                u8::from_str_radix(&hex[4..6], 16)
+                    .map_err(|_| anyhow::anyhow!("invalid hex color: {s}"))?,
+            ),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "invalid hex color (want #rgb or #rrggbb): {s}"
+                ))
+            }
+        }
+    } else if let Some(inner) = s.strip_prefix("rgb(").and_then(|x| x.strip_suffix(')')) {
+        let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
+        if parts.len() != 3 {
+            return Err(anyhow::anyhow!("rgb() needs 3 components: {s}"));
+        }
+        let p = |i: usize| {
+            parts[i]
+                .parse::<u8>()
+                .map_err(|_| anyhow::anyhow!("rgb component out of range (0-255): {s}"))
+        };
+        (p(0)?, p(1)?, p(2)?)
+    } else {
+        return Err(anyhow::anyhow!(
+            "unrecognized color `{s}` (want #rrggbb, #rgb, or rgb(r,g,b))"
+        ));
+    };
+    Ok(json!({"r": r, "g": g, "b": b, "hex": format!("#{r:02x}{g:02x}{b:02x}")}))
+}
+
+fn rgb_of(val: &Value) -> Result<(i64, i64, i64)> {
+    if let Some(arr) = val.as_array() {
+        if arr.len() == 3 {
+            return Ok((
+                arr[0].as_i64().unwrap_or(0),
+                arr[1].as_i64().unwrap_or(0),
+                arr[2].as_i64().unwrap_or(0),
+            ));
+        }
+    }
+    if val.is_object() {
+        return Ok((
+            val["r"].as_i64().unwrap_or(0),
+            val["g"].as_i64().unwrap_or(0),
+            val["b"].as_i64().unwrap_or(0),
+        ));
+    }
+    Err(anyhow::anyhow!("expected [r,g,b] or {{r,g,b}}"))
+}
+
+/// Distance between two RGB colors `a` and `b` (each `[r,g,b]` or `{r,g,b}`),
+/// as both `manhattan` (sum of abs diffs) and `euclidean`. For tolerance-based
+/// pixel matching. Pure.
+fn op_color_distance(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let manhattan = (ar - br).abs() + (ag - bg).abs() + (ab - bb).abs();
+    let euclidean = (((ar - br).pow(2) + (ag - bg).pow(2) + (ab - bb).pow(2)) as f64).sqrt();
+    Ok(json!({"manhattan": manhattan, "euclidean": euclidean}))
+}
+
+#[no_mangle]
+pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_parse_hotkey)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__parse_color(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_parse_color)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_color_distance)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,6 +617,52 @@ mod tests {
             Ok(json!({ "saw_null": v.is_null() }))
         }));
         assert!(out["saw_null"].as_bool().unwrap());
+    }
+
+    // ── pure helpers (no display / input) ────────────────────────────────────
+
+    #[test]
+    fn parse_hotkey_splits_modifiers_from_key() {
+        let v = op_parse_hotkey(json!({"hotkey": "Ctrl+Shift+A"})).unwrap();
+        assert_eq!(v["keys"], json!(["ctrl", "shift", "a"]), "lowercased");
+        assert_eq!(v["modifiers"], json!(["ctrl", "shift"]));
+        assert_eq!(v["key"], json!("a"));
+        // A single key has no modifiers.
+        let single = op_parse_hotkey(json!({"hotkey": "enter"})).unwrap();
+        assert_eq!(single["modifiers"], json!([]));
+        assert_eq!(single["key"], json!("enter"));
+        assert!(op_parse_hotkey(json!({"hotkey": "  "})).is_err());
+    }
+
+    #[test]
+    fn parse_color_hex_and_rgb_forms() {
+        let long = op_parse_color(json!({"color": "#ff8800"})).unwrap();
+        assert_eq!(long["r"], json!(255));
+        assert_eq!(long["g"], json!(136));
+        assert_eq!(long["b"], json!(0));
+        assert_eq!(long["hex"], json!("#ff8800"));
+        // Shorthand #RGB expands each nibble.
+        let short = op_parse_color(json!({"color": "#f80"})).unwrap();
+        assert_eq!(short["hex"], json!("#ff8800"), "#f80 expands to #ff8800");
+        // rgb() form.
+        let rgb = op_parse_color(json!({"color": "rgb(0, 128, 255)"})).unwrap();
+        assert_eq!(rgb["g"], json!(128));
+        assert_eq!(rgb["hex"], json!("#0080ff"));
+        assert!(
+            op_parse_color(json!({"color": "rgb(0,300,0)"})).is_err(),
+            "component > 255"
+        );
+        assert!(op_parse_color(json!({"color": "blue"})).is_err());
+    }
+
+    #[test]
+    fn color_distance_manhattan_and_euclidean() {
+        // Accepts both [r,g,b] and {r,g,b} shapes.
+        let v = op_color_distance(json!({"a": [0, 0, 0], "b": {"r": 3, "g": 4, "b": 0}})).unwrap();
+        assert_eq!(v["manhattan"], json!(7), "3+4+0");
+        assert_eq!(v["euclidean"], json!(5.0), "3-4-5 triangle");
+        let same = op_color_distance(json!({"a": [10, 20, 30], "b": [10, 20, 30]})).unwrap();
+        assert_eq!(same["manhattan"], json!(0));
     }
 }
 

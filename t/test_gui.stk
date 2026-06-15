@@ -27,4 +27,22 @@ assert_ok $seen{f1},    "keys contain 'f1'"
 val @fkeys = grep { /^f\d+$/ } @keys
 assert_ge scalar(@fkeys), 24, "f1..f24 all present"
 
+# ── pure helpers (no display/input — always run) ─────────────────────
+val $hk = GUI::parse_hotkey("Ctrl+Shift+A")
+assert_eq scalar(@{ $hk->{keys} }),      3,   "parse_hotkey: three keys"
+assert_eq $hk->{key},                    "a", "parse_hotkey: main key lowercased"
+assert_eq scalar(@{ $hk->{modifiers} }), 2,   "parse_hotkey: two modifiers"
+assert_eq $hk->{modifiers}[0],           "ctrl", "parse_hotkey: first modifier"
+
+val $c = GUI::parse_color("#ff8800")
+assert_eq $c->{r},   255,        "parse_color: red"
+assert_eq $c->{g},   136,        "parse_color: green"
+assert_eq $c->{hex}, "#ff8800",  "parse_color: hex round-trip"
+assert_eq GUI::parse_color("#f80")->{hex}, "#ff8800", "parse_color: #rgb expands"
+assert_eq GUI::parse_color("rgb(0, 128, 255)")->{b}, 255, "parse_color: rgb() form"
+
+val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
+assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
+assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"
+
 test_run

@@ -285,3 +285,23 @@ fn GUI::clipboard_set ($text) {
     GUI::_decode("clipboard_set", gui__clipboard_set(to_json({ text => $text })))
     1
 }
+
+# ── pure helpers (no display / input) ─────────────────────────────────
+
+## Parse a hotkey string "ctrl+shift+a" into a hashref { keys, modifiers, key }
+## — the last segment is the main key, the rest are modifiers (lowercased).
+fn GUI::parse_hotkey ($hotkey) {
+    GUI::_decode("parse_hotkey", gui__parse_hotkey(to_json({ hotkey => $hotkey })))
+}
+
+## Parse a color string ("#rgb", "#rrggbb", or "rgb(r,g,b)") into a hashref
+## { r, g, b, hex }.
+fn GUI::parse_color ($color) {
+    GUI::_decode("parse_color", gui__parse_color(to_json({ color => $color })))
+}
+
+## Distance between two RGB colors $a and $b (each [r,g,b] arrayref or
+## { r, g, b } hashref) → { manhattan, euclidean }. For pixel-match tolerance.
+fn GUI::color_distance ($a, $b) {
+    GUI::_decode("color_distance", gui__color_distance(to_json({ a => $a, b => $b })))
+}

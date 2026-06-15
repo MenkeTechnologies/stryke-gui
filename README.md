@@ -177,6 +177,16 @@ top-left origin; the primary display only.
 | `GUI::clipboard_get()` | clipboard text (`""` if none) |
 | `GUI::clipboard_set($text)` | `1` |
 
+### Pure helpers (no display / input)
+
+These touch no device — string/color parsing that runs headless:
+
+| Function | Returns |
+|----------|---------|
+| `GUI::parse_hotkey("ctrl+shift+a")` | `{ keys, modifiers, key }` — last segment is the key, rest are modifiers |
+| `GUI::parse_color("#ff8800")` | `{ r, g, b, hex }` — accepts `#rgb`, `#rrggbb`, `rgb(r,g,b)` |
+| `GUI::color_distance($a, $b)` | `{ manhattan, euclidean }` — for pixel-match tolerance; each color `[r,g,b]` or `{r,g,b}` |
+
 ### Displays
 
 | Function | Returns |

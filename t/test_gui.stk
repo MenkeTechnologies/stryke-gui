@@ -67,6 +67,20 @@ assert_gt $white->{l}, 99,   "to_hsl: white lightness 100"
 assert_gt GUI::to_hsl([0, 0, 255])->{h}, 239, "to_hsl: blue hue ~240"
 assert_lt GUI::to_hsl([0, 0, 255])->{h}, 241, "to_hsl: blue hue ~240"
 
+# to_hsv: RGB → HSV/HSB (oracle-verified). V is the brightest channel.
+val $hred = GUI::to_hsv([255, 0, 0])
+assert_eq $hred->{h}, 0,   "to_hsv: red hue 0"
+assert_gt $hred->{s}, 99,  "to_hsv: red fully saturated"
+assert_gt $hred->{v}, 99,  "to_hsv: red value 100"
+# Green (0,128,0): V~50.2 (brightest channel), not HSL's l~25.1.
+val $hgreen = GUI::to_hsv([0, 128, 0])
+assert_gt $hgreen->{v}, 50, "to_hsv: green value ~50.2 (brightest channel)"
+assert_lt $hgreen->{v}, 51, "to_hsv: green value ~50.2"
+assert_gt $hgreen->{h}, 119, "to_hsv: green hue ~120"
+assert_lt $hgreen->{h}, 121, "to_hsv: green hue ~120"
+assert_lt GUI::to_hsv({ r => 128, g => 128, b => 128 })->{s}, 1, "to_hsv: gray is achromatic"
+assert_gt GUI::to_hsv([0, 255, 255])->{h}, 179, "to_hsv: cyan hue ~180"
+
 # from_hsl: HSL → RGB (inverse of to_hsl).
 assert_eq GUI::from_hsl(0, 100, 50)->{hex},   "#ff0000", "from_hsl: red"
 assert_eq GUI::from_hsl(240, 100, 50)->{hex}, "#0000ff", "from_hsl: blue"

@@ -568,9 +568,49 @@ fn op_from_hsl(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSV (a.k.a.
+/// HSB) — the model most colour pickers use: `h` in degrees [0,360), `s` and `v`
+/// in percent [0,100]. Distinct from HSL: `v` is the brightest channel, whereas
+/// HSL's `l` is the midpoint, so the same colour reports different s/l vs s/v.
+/// Pure.
+fn op_to_hsv(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (r, g, b) = (ri as f64 / 255.0, gi as f64 / 255.0, bi as f64 / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    let s = if max <= f64::EPSILON { 0.0 } else { d / max };
+    let h = if d.abs() < f64::EPSILON {
+        0.0 // achromatic
+    } else {
+        let hue = if (max - r).abs() < f64::EPSILON {
+            (g - b) / d + if g < b { 6.0 } else { 0.0 }
+        } else if (max - g).abs() < f64::EPSILON {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        hue / 6.0
+    };
+    Ok(json!({
+        "h": h * 360.0,
+        "s": s * 100.0,
+        "v": max * 100.0,
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_hsv(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_hsv)
 }
 
 #[no_mangle]
@@ -876,6 +916,42 @@ mod tests {
             &op_to_hsl(json!({"color": [0, 0, 255]})).unwrap(),
             "h",
             240.0,
+        );
+    }
+
+    #[test]
+    fn to_hsv_matches_reference_colors() {
+        let approx = |got: &Value, key: &str, want: f64| {
+            let g = got[key].as_f64().unwrap();
+            assert!((g - want).abs() < 0.1, "{key}: got {g}, want {want}");
+        };
+        // Pure red → h0 s100 v100 (oracle-verified via colorsys).
+        let red = op_to_hsv(json!({"color": [255, 0, 0]})).unwrap();
+        approx(&red, "h", 0.0);
+        approx(&red, "s", 100.0);
+        approx(&red, "v", 100.0);
+        // Green (0,128,0) → h120 s100 v~50.2 (V is the brightest channel, not the
+        // HSL midpoint of ~25.1).
+        let green = op_to_hsv(json!({"color": [0, 128, 0]})).unwrap();
+        approx(&green, "h", 120.0);
+        approx(&green, "s", 100.0);
+        approx(&green, "v", 50.2);
+        // Gray (128,128,128) → s0 v~50.2.
+        let gray = op_to_hsv(json!({"color": {"r": 128, "g": 128, "b": 128}})).unwrap();
+        approx(&gray, "s", 0.0);
+        approx(&gray, "v", 50.2);
+        // White v100, black v0.
+        approx(
+            &op_to_hsv(json!({"color": [255, 255, 255]})).unwrap(),
+            "v",
+            100.0,
+        );
+        approx(&op_to_hsv(json!({"color": [0, 0, 0]})).unwrap(), "v", 0.0);
+        // Cyan (0,255,255) → h180.
+        approx(
+            &op_to_hsv(json!({"color": [0, 255, 255]})).unwrap(),
+            "h",
+            180.0,
         );
     }
 

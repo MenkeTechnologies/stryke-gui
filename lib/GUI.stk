@@ -321,6 +321,13 @@ fn GUI::to_hsl ($color) {
     GUI::_decode("to_hsl", gui__to_hsl(to_json({ color => $color })))
 }
 
+## Convert an RGB color ([r,g,b] or { r, g, b }, 0-255) to HSV/HSB — the model
+## colour pickers use → { h, s, v } (h degrees 0-360, s/v percent 0-100). Distinct
+## from HSL: v is the brightest channel, l is the midpoint.
+fn GUI::to_hsv ($color) {
+    GUI::_decode("to_hsv", gui__to_hsv(to_json({ color => $color })))
+}
+
 ## Convert HSL back to RGB per the CSS Color spec — inverse of to_hsl. $h is in
 ## degrees (wrapped into 0-360), $s and $l in percent (clamped 0-100). Returns a
 ## hashref { r, g, b, hex }.

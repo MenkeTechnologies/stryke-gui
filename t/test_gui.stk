@@ -45,6 +45,16 @@ val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
 assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
 assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"
 
+# contrast_ratio: WCAG 2.1 ratio + threshold flags.
+val $bw = GUI::contrast_ratio([0, 0, 0], [255, 255, 255])
+assert_eq $bw->{ratio}, 21,        "contrast_ratio: black/white is 21:1"
+assert_ok $bw->{aaa_normal},       "contrast_ratio: 21 clears AAA normal"
+val $gray = GUI::contrast_ratio([119, 119, 119], [255, 255, 255])
+assert_eq $gray->{ratio}, 4.48,    "contrast_ratio: #777 on white = 4.48"
+assert_eq $gray->{aa_normal}, 0,   "contrast_ratio: 4.48 just misses AA normal (4.5)"
+assert_ok $gray->{aa_large},       "contrast_ratio: 4.48 clears AA large (3.0)"
+assert_eq GUI::contrast_ratio([18, 52, 86], [18, 52, 86])->{ratio}, 1, "contrast_ratio: identical colors are 1:1"
+
 # to_hsl: RGB → HSL (CSS reference colors). Bounds avoid float-repr fragility.
 val $red = GUI::to_hsl([255, 0, 0])
 assert_eq $red->{h}, 0,   "to_hsl: red hue 0"

@@ -186,6 +186,7 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::parse_hotkey("ctrl+shift+a")` | `{ keys, modifiers, key }` — last segment is the key, rest are modifiers |
 | `GUI::parse_color("#ff8800")` | `{ r, g, b, hex }` — accepts `#rgb`, `#rrggbb`, `rgb(r,g,b)` |
 | `GUI::color_distance($a, $b)` | `{ manhattan, euclidean }` — for pixel-match tolerance; each color `[r,g,b]` or `{r,g,b}` |
+| `GUI::contrast_ratio($a, $b)` | `{ ratio, aa_normal, aa_large, aaa_normal, aaa_large }` — WCAG 2.1 contrast (1–21) + threshold flags for accessibility |
 | `GUI::to_hsl($color)` | `{ h, s, l }` — RGB → HSL (CSS spec); h in degrees 0-360, s/l in percent; for deriving shades by nudging lightness |
 | `GUI::from_hsl($h, $s, $l)` | `{ r, g, b, hex }` — HSL → RGB (CSS spec); inverse of `to_hsl`, h wraps, s/l clamp |
 

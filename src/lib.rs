@@ -432,6 +432,43 @@ fn op_color_distance(v: Value) -> Result<Value> {
     Ok(json!({"manhattan": manhattan, "euclidean": euclidean}))
 }
 
+/// WCAG 2.1 relative luminance of an sRGB color (components 0-255), in [0,1].
+/// Each channel is linearized (`c/12.92` below the 0.03928 knee, else
+/// `((c+0.055)/1.055)^2.4`) and weighted 0.2126/0.7152/0.0722.
+fn relative_luminance(r: i64, g: i64, b: i64) -> f64 {
+    let chan = |c: i64| -> f64 {
+        let c = (c as f64 / 255.0).clamp(0.0, 1.0);
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+}
+
+/// WCAG 2.1 contrast ratio between two colors `a` and `b` (each `[r,g,b]` or
+/// `{r,g,b}`): `(L_light + 0.05) / (L_dark + 0.05)`, from 1 (identical) to 21
+/// (black vs white). Reports the ratio (2 d.p.) plus whether it clears the WCAG
+/// thresholds — AA normal ≥4.5, AA large ≥3, AAA normal ≥7, AAA large ≥4.5 — so
+/// you can check a foreground/background pair for accessibility. Pure.
+fn op_contrast_ratio(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let la = relative_luminance(ar, ag, ab);
+    let lb = relative_luminance(br, bg, bb);
+    let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+    let ratio = (hi + 0.05) / (lo + 0.05);
+    let rounded = (ratio * 100.0).round() / 100.0;
+    Ok(json!({
+        "ratio": rounded,
+        "aa_normal": rounded >= 4.5,
+        "aa_large": rounded >= 3.0,
+        "aaa_normal": rounded >= 7.0,
+        "aaa_large": rounded >= 4.5,
+    }))
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSL per
 /// the CSS Color spec: `h` in degrees [0,360), `s` and `l` in percent [0,100].
 /// Useful for deriving hover/active shades by nudging lightness. Pure.
@@ -544,6 +581,11 @@ pub extern "C" fn gui__parse_color(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
     ffi_call(args, op_color_distance)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__contrast_ratio(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_contrast_ratio)
 }
 
 #[no_mangle]
@@ -772,6 +814,38 @@ mod tests {
         assert_eq!(v["euclidean"], json!(5.0), "3-4-5 triangle");
         let same = op_color_distance(json!({"a": [10, 20, 30], "b": [10, 20, 30]})).unwrap();
         assert_eq!(same["manhattan"], json!(0));
+    }
+
+    #[test]
+    fn contrast_ratio_matches_wcag_reference_values() {
+        // Black vs white is the maximum 21:1 — everything passes.
+        let bw = op_contrast_ratio(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap();
+        assert_eq!(bw["ratio"], json!(21.0));
+        assert_eq!(bw["aa_normal"], json!(true));
+        assert_eq!(bw["aaa_normal"], json!(true));
+        // Order-independent.
+        assert_eq!(
+            op_contrast_ratio(json!({"a": [255, 255, 255], "b": [0, 0, 0]})).unwrap()["ratio"],
+            json!(21.0)
+        );
+        // Identical colors are 1:1 — fails every threshold.
+        let same = op_contrast_ratio(json!({"a": {"r": 18, "g": 52, "b": 86}, "b": [18, 52, 86]}))
+            .unwrap();
+        assert_eq!(same["ratio"], json!(1.0));
+        assert_eq!(same["aa_large"], json!(false));
+        // #777777 on white = 4.48 — just under AA normal (4.5), clears AA large.
+        let gray =
+            op_contrast_ratio(json!({"a": [0x77, 0x77, 0x77], "b": [255, 255, 255]})).unwrap();
+        assert_eq!(gray["ratio"], json!(4.48));
+        assert_eq!(gray["aa_normal"], json!(false));
+        assert_eq!(gray["aa_large"], json!(true));
+        // #2563eb on white = 5.17 — passes AA normal, fails AAA normal (7).
+        let blue =
+            op_contrast_ratio(json!({"a": [0x25, 0x63, 0xeb], "b": [255, 255, 255]})).unwrap();
+        assert_eq!(blue["ratio"], json!(5.17));
+        assert_eq!(blue["aa_normal"], json!(true));
+        assert_eq!(blue["aaa_normal"], json!(false));
+        assert!(op_contrast_ratio(json!({"a": [0, 0, 0]})).is_err());
     }
 
     #[test]

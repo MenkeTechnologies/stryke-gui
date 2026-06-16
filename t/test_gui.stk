@@ -127,6 +127,22 @@ assert_eq $vrt->{r}, 255, "from_hsv round-trips r"
 assert_eq $vrt->{g}, 128, "from_hsv round-trips g"
 assert_eq $vrt->{b}, 0,   "from_hsv round-trips b"
 
+# to_hwb / from_hwb: Hue-Whiteness-Blackness (CSS Color 4).
+val $wred = GUI::to_hwb([255, 0, 0])
+assert_eq $wred->{w}, 0, "to_hwb: pure hue has no whiteness"
+assert_eq $wred->{b}, 0, "to_hwb: pure hue has no blackness"
+assert_eq GUI::to_hwb([255, 255, 255])->{w}, 100, "to_hwb: white is all whiteness"
+assert_eq GUI::to_hwb([0, 0, 0])->{b},       100, "to_hwb: black is all blackness"
+assert_eq GUI::from_hwb(0, 0, 0)->{hex},   "#ff0000", "from_hwb: pure red"
+assert_eq GUI::from_hwb(0, 50, 0)->{hex},  "#ff8080", "from_hwb: red + 50% white"
+assert_eq GUI::from_hwb(0, 0, 50)->{hex},  "#800000", "from_hwb: red + 50% black"
+assert_eq GUI::from_hwb(0, 50, 50)->{hex}, "#808080", "from_hwb: w+b=100 collapses to gray"
+val $w = GUI::to_hwb([12, 200, 90])
+val $wrt = GUI::from_hwb($w->{h}, $w->{w}, $w->{b})
+assert_eq $wrt->{r}, 12,  "from_hwb round-trips r"
+assert_eq $wrt->{g}, 200, "from_hwb round-trips g"
+assert_eq $wrt->{b}, 90,  "from_hwb round-trips b"
+
 # to_cmyk / from_cmyk: the print-world fourth space (oracle-verified).
 val $cred = GUI::to_cmyk([255, 0, 0])
 assert_eq $cred->{m}, 100, "to_cmyk: red is full magenta"

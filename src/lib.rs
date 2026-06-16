@@ -710,6 +710,93 @@ fn op_from_hsv(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HWB
+/// (Hue-Whiteness-Blackness, CSS Color 4 §8) — the cylindrical space alongside
+/// `to_hsl`/`to_hsv`. Hue is the HSV/HSL hue; whiteness is `min(r,g,b)` and
+/// blackness is `1 - max(r,g,b)`, each as a percentage. opts: `color`/`a`. Returns
+/// `{h, w, b}` (`h` degrees, `w`/`b` percent). Pure.
+fn op_to_hwb(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (r, g, b) = (ri as f64 / 255.0, gi as f64 / 255.0, bi as f64 / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    // Hue is identical to to_hsv's (HSL/HSV share the hue angle).
+    let h = if d.abs() < f64::EPSILON {
+        0.0 // achromatic
+    } else {
+        let hue = if (max - r).abs() < f64::EPSILON {
+            (g - b) / d + if g < b { 6.0 } else { 0.0 }
+        } else if (max - g).abs() < f64::EPSILON {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        hue / 6.0
+    };
+    Ok(json!({
+        "h": h * 360.0,
+        "w": min * 100.0,
+        "b": (1.0 - max) * 100.0,
+    }))
+}
+
+/// Convert an HWB color (`h` degrees, `w`/`b` percent) back to RGB — the inverse
+/// of `to_hwb` (CSS Color 4 §8.1). `h` is normalized mod 360; `w`/`b` clamp to
+/// [0,100]. When `w + b >= 100%` the result is the gray `w / (w + b)`; otherwise
+/// the pure hue (HSV with s=v=1) is scaled by `1 - w - b` and offset by `w`.
+/// Returns `{r, g, b, hex}` with components rounded to 0-255. Pure.
+fn op_from_hwb(v: Value) -> Result<Value> {
+    let h = v.get("h").and_then(Value::as_f64).unwrap_or(0.0);
+    let w = v
+        .get("w")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    let bl = v
+        .get("b")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    let to_u8 = |y: f64| (y * 255.0).round() as u8;
+    let (r, g, b) = if w + bl >= 1.0 {
+        let gray = w / (w + bl);
+        (to_u8(gray), to_u8(gray), to_u8(gray))
+    } else {
+        // Pure hue: HSV with s=v=1 (c=1, m=0), same piecewise as from_hsv.
+        let hp = h.rem_euclid(360.0) / 60.0;
+        let x = 1.0 - ((hp % 2.0) - 1.0).abs();
+        let (r1, g1, b1) = if hp < 1.0 {
+            (1.0, x, 0.0)
+        } else if hp < 2.0 {
+            (x, 1.0, 0.0)
+        } else if hp < 3.0 {
+            (0.0, 1.0, x)
+        } else if hp < 4.0 {
+            (0.0, x, 1.0)
+        } else if hp < 5.0 {
+            (x, 0.0, 1.0)
+        } else {
+            (1.0, 0.0, x)
+        };
+        let span = 1.0 - w - bl;
+        let mix = |c: f64| c * span + w;
+        (to_u8(mix(r1)), to_u8(mix(g1)), to_u8(mix(b1)))
+    };
+    Ok(json!({
+        "r": r,
+        "g": g,
+        "b": b,
+        "hex": format!("#{r:02x}{g:02x}{b:02x}"),
+    }))
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to CMYK using
 /// the standard profile-free formula (`K = 1 - max(r,g,b)`; the rest scaled by
 /// `1-K`). The print-world fourth space alongside `to_hsl`/`to_hsv`. `c,m,y,k`
@@ -771,6 +858,16 @@ pub extern "C" fn gui__to_hsv(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__from_hsv(args: *const c_char) -> *const c_char {
     ffi_call(args, op_from_hsv)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_hwb(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_hwb)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_hwb(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_hwb)
 }
 
 #[no_mangle]
@@ -1339,6 +1436,70 @@ mod tests {
             json!("#ff0000"),
             "360° wraps to 0° (red)"
         );
+    }
+
+    #[test]
+    fn to_hwb_matches_reference_colors() {
+        let hwb = |rgb: [i64; 3]| op_to_hwb(json!({ "color": rgb })).unwrap();
+        // A fully saturated hue has zero whiteness and zero blackness.
+        let red = hwb([255, 0, 0]);
+        assert_eq!(red["h"], json!(0.0));
+        assert_eq!(red["w"], json!(0.0));
+        assert_eq!(red["b"], json!(0.0));
+        // White: all whiteness; black: all blackness.
+        assert_eq!(hwb([255, 255, 255])["w"], json!(100.0));
+        assert_eq!(hwb([255, 255, 255])["b"], json!(0.0));
+        assert_eq!(hwb([0, 0, 0])["b"], json!(100.0));
+        assert_eq!(hwb([0, 0, 0])["w"], json!(0.0));
+        // Orange keeps the HSV hue with w=b=0.
+        let orange = hwb([255, 128, 0]);
+        assert!((orange["h"].as_f64().unwrap() - 30.118).abs() < 0.1);
+        assert_eq!(orange["w"], json!(0.0));
+        assert_eq!(orange["b"], json!(0.0));
+    }
+
+    #[test]
+    fn from_hwb_inverts_to_hwb_for_reference_colors() {
+        let hex = |h: f64, w: f64, b: f64| {
+            op_from_hwb(json!({"h": h, "w": w, "b": b})).unwrap()["hex"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        // Pure hues.
+        assert_eq!(hex(0.0, 0.0, 0.0), "#ff0000");
+        assert_eq!(hex(120.0, 0.0, 0.0), "#00ff00");
+        assert_eq!(hex(30.0, 0.0, 0.0), "#ff8000");
+        // Whiteness lightens, blackness darkens (red + 50%).
+        assert_eq!(hex(0.0, 50.0, 0.0), "#ff8080");
+        assert_eq!(hex(0.0, 0.0, 50.0), "#800000");
+        // w + b >= 100% collapses to the normalized gray w/(w+b).
+        assert_eq!(hex(0.0, 100.0, 0.0), "#ffffff");
+        assert_eq!(hex(0.0, 0.0, 100.0), "#000000");
+        assert_eq!(hex(0.0, 50.0, 50.0), "#808080");
+        assert_eq!(hex(0.0, 60.0, 40.0), "#999999", "60/100 white → 0.6 gray");
+        // Round-trip: RGB → to_hwb → from_hwb reproduces the original.
+        for rgb in [
+            [255, 0, 0],
+            [0, 255, 255],
+            [255, 128, 0],
+            [128, 128, 128],
+            [12, 200, 90],
+        ] {
+            let h = op_to_hwb(json!({"color": rgb})).unwrap();
+            let back = op_from_hwb(json!({"h": h["h"], "w": h["w"], "b": h["b"]})).unwrap();
+            assert_eq!(
+                [
+                    back["r"].as_i64().unwrap(),
+                    back["g"].as_i64().unwrap(),
+                    back["b"].as_i64().unwrap()
+                ],
+                rgb,
+                "round-trips for {rgb:?}"
+            );
+        }
+        // Hue wraps; out-of-range w/b clamp.
+        assert_eq!(hex(360.0, 0.0, 0.0), "#ff0000", "360° wraps to red");
     }
 
     #[test]

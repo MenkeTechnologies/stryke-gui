@@ -363,6 +363,21 @@ fn GUI::from_hsv ($h, $s, $v) {
     GUI::_decode("from_hsv", gui__from_hsv(to_json({ h => $h, s => $s, v => $v })))
 }
 
+## Convert an RGB color ([r,g,b] or { r, g, b }, 0-255) to HWB (Hue-Whiteness-
+## Blackness, CSS Color 4) → { h, w, b } (h degrees 0-360, w/b percent 0-100). The
+## cylindrical space alongside to_hsl/to_hsv: w = min(r,g,b), b = 1 - max(r,g,b).
+fn GUI::to_hwb ($color) {
+    GUI::_decode("to_hwb", gui__to_hwb(to_json({ color => $color })))
+}
+
+## Convert HWB back to RGB — inverse of to_hwb. $h is in degrees (wrapped into
+## 0-360), $w and $b in percent (clamped 0-100). When $w + $b >= 100 the result is
+## the gray $w/($w+$b); otherwise the pure hue is scaled by 1-$w-$b and offset by
+## $w. Returns a hashref { r, g, b, hex }.
+fn GUI::from_hwb ($h, $w, $b) {
+    GUI::_decode("from_hwb", gui__from_hwb(to_json({ h => $h, w => $w, b => $b })))
+}
+
 ## Convert an RGB color ([r,g,b] or { r, g, b }, 0-255) to CMYK (standard
 ## profile-free formula) → { c, m, y, k } as percentages 0-100. The print-world
 ## space alongside to_hsl/to_hsv; pure black is k=100, c=m=y=0.

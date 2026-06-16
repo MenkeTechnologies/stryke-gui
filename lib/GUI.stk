@@ -313,6 +313,13 @@ fn GUI::mix ($a, $b, $weight = 0.5) {
     GUI::_decode("mix", gui__mix(to_json({ a => $a, b => $b, weight => $weight })))
 }
 
+## Rotate a color $color's hue by $degrees in HSL, keeping saturation/lightness —
+## the basis of colour schemes (complementary 180, triadic ±120, analogous ±30).
+## Wraps mod 360; negative allowed; a grey is unchanged. Returns { r, g, b, hex, h }.
+fn GUI::rotate_hue ($color, $degrees) {
+    GUI::_decode("rotate_hue", gui__rotate_hue(to_json({ color => $color, degrees => $degrees })))
+}
+
 ## WCAG 2.1 contrast ratio between two RGB colors $a and $b (each [r,g,b] or
 ## { r, g, b }) → { ratio, aa_normal, aa_large, aaa_normal, aaa_large }. ratio is
 ## 1 (identical) to 21 (black vs white); the booleans report whether the pair

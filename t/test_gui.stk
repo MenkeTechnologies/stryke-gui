@@ -53,6 +53,15 @@ assert_eq GUI::mix([255, 0, 0], [0, 0, 255])->{hex}, "#800080", "mix: red+blue �
 assert_eq GUI::mix([0, 0, 0], [200, 100, 40], 0.25)->{r}, 50, "mix: fractional weight interpolates"
 assert_dies fn { GUI::mix([1, 2], [3, 4, 5]) }, "mix: rejects a malformed color"
 
+# rotate_hue: rotate hue in HSL for colour schemes.
+assert_eq GUI::rotate_hue([255, 0, 0], 120)->{hex}, "#00ff00", "rotate_hue: red +120 → green (triad)"
+assert_eq GUI::rotate_hue([255, 0, 0], 240)->{hex}, "#0000ff", "rotate_hue: red +240 → blue (triad)"
+assert_eq GUI::rotate_hue([255, 0, 0], 180)->{hex}, "#00ffff", "rotate_hue: red +180 → cyan (complement)"
+assert_eq GUI::rotate_hue([255, 0, 0], 360)->{hex}, "#ff0000", "rotate_hue: +360 is a no-op"
+assert_eq GUI::rotate_hue([255, 0, 0], -30)->{hex}, GUI::rotate_hue([255, 0, 0], 330)->{hex}, "rotate_hue: negative wraps"
+assert_eq GUI::rotate_hue([128, 128, 128], 90)->{hex}, "#808080", "rotate_hue: grey is unchanged (no chroma)"
+assert_dies fn { GUI::rotate_hue([255, 0, 0]) }, "rotate_hue: requires degrees"
+
 # contrast_ratio: WCAG 2.1 ratio + threshold flags.
 val $bw = GUI::contrast_ratio([0, 0, 0], [255, 255, 255])
 assert_eq $bw->{ratio}, 21,        "contrast_ratio: black/white is 21:1"

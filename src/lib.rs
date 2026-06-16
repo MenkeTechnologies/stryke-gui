@@ -602,6 +602,34 @@ fn op_from_hsl(v: Value) -> Result<Value> {
     }))
 }
 
+/// Rotate a color's hue by `degrees` in HSL space, keeping its saturation and
+/// lightness — the basis of colour-scheme generation (complementary = 180°,
+/// triadic = ±120°, analogous = ±30°). The colour is converted to HSL, the hue
+/// advanced (wrapping mod 360; negative is allowed), and converted back. A grey
+/// (saturation 0) is unchanged since it has no chroma to rotate. opts: `color`
+/// (any form `parse_color` accepts), `degrees` (or `deg`). Returns
+/// `{r, g, b, hex, h}` where `h` is the resulting hue. Pure.
+fn op_rotate_hue(v: Value) -> Result<Value> {
+    let degrees = v
+        .get("degrees")
+        .or_else(|| v.get("deg"))
+        .and_then(Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("missing degrees"))?;
+    let color = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let hsl = op_to_hsl(json!({ "color": color }))?;
+    let h = hsl["h"].as_f64().unwrap_or(0.0);
+    let s = hsl["s"].as_f64().unwrap_or(0.0);
+    let l = hsl["l"].as_f64().unwrap_or(0.0);
+    let new_h = (h + degrees).rem_euclid(360.0);
+    let mut out = op_from_hsl(json!({ "h": new_h, "s": s, "l": l }))?;
+    out["h"] = json!(new_h);
+    Ok(out)
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSV (a.k.a.
 /// HSB) — the model most colour pickers use: `h` in degrees [0,360), `s` and `v`
 /// in percent [0,100]. Distinct from HSL: `v` is the brightest channel, whereas
@@ -768,6 +796,11 @@ pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__mix(args: *const c_char) -> *const c_char {
     ffi_call(args, op_mix)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__rotate_hue(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_rotate_hue)
 }
 
 #[no_mangle]
@@ -1040,6 +1073,38 @@ mod tests {
         // Bad/missing color shape errors.
         assert!(op_mix(json!({"a": [1, 2], "b": [3, 4, 5]})).is_err());
         assert!(op_mix(json!({"b": [3, 4, 5]})).is_err());
+    }
+
+    #[test]
+    fn rotate_hue_generates_colour_schemes() {
+        let hex = |color: Value, deg: f64| {
+            op_rotate_hue(json!({ "color": color, "degrees": deg })).unwrap()["hex"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        // Red's triad: +120° → green, +240° → blue.
+        assert_eq!(hex(json!([255, 0, 0]), 120.0), "#00ff00");
+        assert_eq!(hex(json!([255, 0, 0]), 240.0), "#0000ff");
+        // Complement (180°): red → cyan, green → magenta.
+        assert_eq!(hex(json!([255, 0, 0]), 180.0), "#00ffff");
+        assert_eq!(hex(json!([0, 255, 0]), 180.0), "#ff00ff");
+        // Wrapping: +360° is a no-op, negative rotates the other way (== +330).
+        assert_eq!(hex(json!([255, 0, 0]), 360.0), "#ff0000");
+        assert_eq!(
+            hex(json!([255, 0, 0]), -30.0),
+            hex(json!([255, 0, 0]), 330.0)
+        );
+        // The resulting hue is reported and wrapped into [0,360).
+        assert_eq!(
+            op_rotate_hue(json!({"color": [255, 0, 0], "degrees": 120})).unwrap()["h"],
+            json!(120.0)
+        );
+        // A grey has no chroma, so rotating its hue leaves it unchanged.
+        assert_eq!(hex(json!([128, 128, 128]), 90.0), "#808080");
+        // Missing degrees / color errors.
+        assert!(op_rotate_hue(json!({"color": [255, 0, 0]})).is_err());
+        assert!(op_rotate_hue(json!({"degrees": 90})).is_err());
     }
 
     #[test]

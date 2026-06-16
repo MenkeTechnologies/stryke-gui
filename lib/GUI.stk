@@ -300,6 +300,14 @@ fn GUI::parse_color ($color) {
     GUI::_decode("parse_color", gui__parse_color(to_json({ color => $color })))
 }
 
+## Format an RGB $color ([r,g,b] arrayref or { r, g, b } hashref) as a string —
+## the inverse of parse_color. opts: format => "hex" (#rrggbb, default) or "rgb"
+## (rgb(r, g, b)). Components clamp to 0-255; both notations round-trip through
+## parse_color. Returns a hashref { r, g, b, format, formatted }.
+fn GUI::format_color ($color, %opts) {
+    GUI::_decode("format_color", gui__format_color(to_json({ color => $color, format => $opts{format} })))
+}
+
 ## Distance between two RGB colors $a and $b (each [r,g,b] arrayref or
 ## { r, g, b } hashref) → { manhattan, euclidean }. For pixel-match tolerance.
 fn GUI::color_distance ($a, $b) {

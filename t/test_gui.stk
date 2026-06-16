@@ -41,6 +41,13 @@ assert_eq $c->{hex}, "#ff8800",  "parse_color: hex round-trip"
 assert_eq GUI::parse_color("#f80")->{hex}, "#ff8800", "parse_color: #rgb expands"
 assert_eq GUI::parse_color("rgb(0, 128, 255)")->{b}, 255, "parse_color: rgb() form"
 
+# format_color: inverse of parse_color (rgb → string notation).
+assert_eq GUI::format_color([255, 136, 0])->{formatted}, "#ff8800", "format_color: default hex notation"
+assert_eq GUI::format_color([0, 128, 255], format => "rgb")->{formatted}, "rgb(0, 128, 255)", "format_color: rgb() notation"
+assert_eq GUI::format_color([300, -5, 128])->{formatted}, "#ff0080", "format_color: clamps components to 0-255"
+# Round-trips through parse_color.
+assert_eq GUI::parse_color(GUI::format_color([12, 200, 90], format => "rgb")->{formatted})->{g}, 200, "format_color: round-trips via parse_color"
+
 val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
 assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
 assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"

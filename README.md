@@ -185,6 +185,7 @@ These touch no device — string/color parsing that runs headless:
 |----------|---------|
 | `GUI::parse_hotkey("ctrl+shift+a")` | `{ keys, modifiers, key }` — last segment is the key, rest are modifiers |
 | `GUI::parse_color("#ff8800")` | `{ r, g, b, hex }` — accepts `#rgb`, `#rrggbb`, `rgb(r,g,b)` |
+| `GUI::format_color($color, %opts)` | `{ r, g, b, format, formatted }` — inverse of `parse_color`; `format` `hex` (default) or `rgb`; clamps 0-255 |
 | `GUI::color_distance($a, $b)` | `{ manhattan, euclidean }` — for pixel-match tolerance; each color `[r,g,b]` or `{r,g,b}` |
 | `GUI::mix($a, $b, $weight?)` | `{ r, g, b, hex }` — blend two colors by weight (fraction of `b`, default 0.5); linear sRGB; for tints/shades/gradients |
 | `GUI::rotate_hue($color, $degrees)` | `{ r, g, b, hex, h }` — rotate hue in HSL (complement 180°, triadic ±120°, analogous ±30°); wraps mod 360; grey unchanged |

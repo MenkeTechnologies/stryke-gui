@@ -401,6 +401,32 @@ fn op_parse_color(v: Value) -> Result<Value> {
     Ok(json!({"r": r, "g": g, "b": b, "hex": format!("#{r:02x}{g:02x}{b:02x}")}))
 }
 
+/// Format an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) as a string in a
+/// chosen notation — the string-emitting inverse of `parse_color`. opts: `color`
+/// (or `a`), `format` (`"hex"` → `#rrggbb`, the default; or `"rgb"` → `rgb(r, g,
+/// b)`). Components are clamped to 0-255; both notations round-trip through
+/// `parse_color`. Returns `{r, g, b, format, formatted}`. Pure.
+fn op_format_color(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let clamp = |x: i64| x.clamp(0, 255) as u8;
+    let (r, g, b) = (clamp(r), clamp(g), clamp(b));
+    let fmt = v.get("format").and_then(Value::as_str).unwrap_or("hex");
+    let formatted = match fmt {
+        "hex" => format!("#{r:02x}{g:02x}{b:02x}"),
+        "rgb" => format!("rgb({r}, {g}, {b})"),
+        other => {
+            return Err(anyhow::anyhow!(
+                "unknown color format `{other}` (want hex or rgb)"
+            ))
+        }
+    };
+    Ok(json!({"r": r, "g": g, "b": b, "format": fmt, "formatted": formatted}))
+}
+
 fn rgb_of(val: &Value) -> Result<(i64, i64, i64)> {
     if let Some(arr) = val.as_array() {
         if arr.len() == 3 {
@@ -886,6 +912,11 @@ pub extern "C" fn gui__parse_color(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__format_color(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_format_color)
+}
+
+#[no_mangle]
 pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
     ffi_call(args, op_color_distance)
 }
@@ -1126,6 +1157,43 @@ mod tests {
             "component > 255"
         );
         assert!(op_parse_color(json!({"color": "blue"})).is_err());
+    }
+
+    #[test]
+    fn format_color_emits_hex_and_rgb_and_round_trips() {
+        // Default format is hex; accepts [r,g,b] and {r,g,b}.
+        assert_eq!(
+            op_format_color(json!({"color": [255, 136, 0]})).unwrap()["formatted"],
+            json!("#ff8800")
+        );
+        assert_eq!(
+            op_format_color(json!({"color": {"r": 0, "g": 128, "b": 255}, "format": "hex"}))
+                .unwrap()["formatted"],
+            json!("#0080ff")
+        );
+        // rgb() notation.
+        assert_eq!(
+            op_format_color(json!({"color": [0, 128, 255], "format": "rgb"})).unwrap()["formatted"],
+            json!("rgb(0, 128, 255)")
+        );
+        // Components clamp to 0-255.
+        assert_eq!(
+            op_format_color(json!({"color": [300, -5, 128]})).unwrap()["formatted"],
+            json!("#ff0080")
+        );
+        // Both notations round-trip through parse_color.
+        for fmt in ["hex", "rgb"] {
+            let s = op_format_color(json!({"color": [12, 200, 90], "format": fmt})).unwrap()
+                ["formatted"]
+                .clone();
+            let back = op_parse_color(json!({ "color": s })).unwrap();
+            assert_eq!(
+                [back["r"].clone(), back["g"].clone(), back["b"].clone()],
+                [json!(12), json!(200), json!(90)],
+                "round-trip via {fmt}"
+            );
+        }
+        assert!(op_format_color(json!({"color": [1, 2, 3], "format": "hsl"})).is_err());
     }
 
     #[test]

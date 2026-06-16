@@ -77,6 +77,13 @@ assert_eq GUI::adjust_lightness([255, 0, 0], 10)->{l}, 60, "adjust_lightness: re
 assert_eq GUI::adjust_lightness([0, 0, 0], 1000)->{hex}, "#ffffff", "adjust_lightness: clamps at 100"
 assert_dies fn { GUI::adjust_lightness([255, 0, 0]) }, "adjust_lightness: requires delta"
 
+# adjust_saturation: nudge HSL saturation (saturate/desaturate).
+assert_eq GUI::adjust_saturation([255, 0, 0], -100)->{hex}, "#808080", "adjust_saturation: red -100 → mid-grey"
+assert_eq GUI::adjust_saturation([255, 0, 0], -100)->{s}, 0, "adjust_saturation: reports the new saturation"
+assert_eq GUI::adjust_saturation([255, 0, 0], 50)->{hex}, "#ff0000", "adjust_saturation: already-max saturation clamps unchanged"
+assert_eq GUI::adjust_saturation([255, 0, 0], -50)->{s}, 50, "adjust_saturation: halves the saturation"
+assert_dies fn { GUI::adjust_saturation([255, 0, 0]) }, "adjust_saturation: requires delta"
+
 # contrast_ratio: WCAG 2.1 ratio + threshold flags.
 val $bw = GUI::contrast_ratio([0, 0, 0], [255, 255, 255])
 assert_eq $bw->{ratio}, 21,        "contrast_ratio: black/white is 21:1"

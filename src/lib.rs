@@ -683,6 +683,34 @@ fn op_adjust_lightness(v: Value) -> Result<Value> {
     Ok(out)
 }
 
+/// Nudge a color's HSL saturation by `delta` percentage points, keeping its hue
+/// and lightness — `saturate` for a positive delta, `desaturate` for a negative
+/// one (set it to -100 for greyscale). The saturation-axis counterpart of
+/// `adjust_lightness`: the color is converted to HSL, `s` shifted and clamped to
+/// [0,100], and converted back. opts: `color` (`[r,g,b]` or `{r,g,b}`), `delta`
+/// (or `amount`, percentage points). Returns `{r, g, b, hex, s}` where `s` is the
+/// resulting saturation. Pure.
+fn op_adjust_saturation(v: Value) -> Result<Value> {
+    let delta = v
+        .get("delta")
+        .or_else(|| v.get("amount"))
+        .and_then(Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("missing delta"))?;
+    let color = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let hsl = op_to_hsl(json!({ "color": color }))?;
+    let h = hsl["h"].as_f64().unwrap_or(0.0);
+    let s = hsl["s"].as_f64().unwrap_or(0.0);
+    let l = hsl["l"].as_f64().unwrap_or(0.0);
+    let new_s = (s + delta).clamp(0.0, 100.0);
+    let mut out = op_from_hsl(json!({ "h": h, "s": new_s, "l": l }))?;
+    out["s"] = json!(new_s);
+    Ok(out)
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSV (a.k.a.
 /// HSB) — the model most colour pickers use: `h` in degrees [0,360), `s` and `v`
 /// in percent [0,100]. Distinct from HSL: `v` is the brightest channel, whereas
@@ -961,6 +989,11 @@ pub extern "C" fn gui__rotate_hue(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__adjust_lightness(args: *const c_char) -> *const c_char {
     ffi_call(args, op_adjust_lightness)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__adjust_saturation(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_adjust_saturation)
 }
 
 #[no_mangle]
@@ -1330,6 +1363,33 @@ mod tests {
         // Missing delta / color errors.
         assert!(op_adjust_lightness(json!({"color": [255, 0, 0]})).is_err());
         assert!(op_adjust_lightness(json!({"delta": 10})).is_err());
+    }
+
+    #[test]
+    fn adjust_saturation_saturates_and_desaturates() {
+        let f = |color: Value, delta: f64| {
+            op_adjust_saturation(json!({ "color": color, "delta": delta })).unwrap()
+        };
+        // Fully desaturating red (s 100 → 0) yields a mid-grey at the same lightness.
+        let g = f(json!([255, 0, 0]), -100.0);
+        assert_eq!(g["hex"], json!("#808080"));
+        assert_eq!(g["s"], json!(0.0));
+        // Red is already fully saturated; saturating further clamps at 100 and
+        // leaves the color unchanged.
+        let r = f(json!([255, 0, 0]), 50.0);
+        assert_eq!(r["s"], json!(100.0));
+        assert_eq!(r["hex"], json!("#ff0000"));
+        // Hue and lightness are preserved (only s moves): l stays 50.
+        let half = f(json!([255, 0, 0]), -50.0);
+        assert_eq!(half["s"], json!(50.0));
+        // `amount` alias; clamping at the low end.
+        assert_eq!(
+            op_adjust_saturation(json!({"color": [255, 0, 0], "amount": -1000.0})).unwrap()["s"],
+            json!(0.0)
+        );
+        // Missing delta / color errors.
+        assert!(op_adjust_saturation(json!({"color": [255, 0, 0]})).is_err());
+        assert!(op_adjust_saturation(json!({"delta": 10})).is_err());
     }
 
     #[test]

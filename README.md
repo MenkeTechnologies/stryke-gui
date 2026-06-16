@@ -190,6 +190,7 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::mix($a, $b, $weight?)` | `{ r, g, b, hex }` — blend two colors by weight (fraction of `b`, default 0.5); linear sRGB; for tints/shades/gradients |
 | `GUI::rotate_hue($color, $degrees)` | `{ r, g, b, hex, h }` — rotate hue in HSL (complement 180°, triadic ±120°, analogous ±30°); wraps mod 360; grey unchanged |
 | `GUI::adjust_lightness($color, $delta)` | `{ r, g, b, hex, l }` — nudge HSL lightness by `$delta` points (lighten >0, darken <0); keeps hue/saturation; clamps `l` to [0,100] |
+| `GUI::adjust_saturation($color, $delta)` | `{ r, g, b, hex, s }` — nudge HSL saturation by `$delta` points (saturate >0, desaturate <0; -100 → greyscale); keeps hue/lightness; clamps `s` to [0,100] |
 | `GUI::contrast_ratio($a, $b)` | `{ ratio, aa_normal, aa_large, aaa_normal, aaa_large }` — WCAG 2.1 contrast (1–21) + threshold flags for accessibility |
 | `GUI::relative_luminance($color)` | `0–1` — WCAG 2.1 relative luminance of one color (the building block `contrast_ratio` combines); >~0.5 = light |
 | `GUI::to_hsl($color)` | `{ h, s, l }` — RGB → HSL (CSS spec); h in degrees 0-360, s/l in percent; for deriving shades by nudging lightness |

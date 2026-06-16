@@ -314,6 +314,13 @@ fn GUI::contrast_ratio ($a, $b) {
     GUI::_decode("contrast_ratio", gui__contrast_ratio(to_json({ a => $a, b => $b })))
 }
 
+## WCAG 2.1 relative luminance of a single RGB color (the building block
+## contrast_ratio combines), in [0,1]. A common use: luminance > ~0.5 means a
+## light color, so pair it with dark text. Returns the luminance number.
+fn GUI::relative_luminance ($color) {
+    GUI::_decode("relative_luminance", gui__relative_luminance(to_json({ color => $color })))->{luminance}
+}
+
 ## Convert an RGB color ([r,g,b] arrayref or { r, g, b } hashref, 0-255) to HSL
 ## per the CSS Color spec → { h, s, l } (h in degrees 0-360, s and l in percent
 ## 0-100). Useful for deriving hover/active shades by nudging lightness.

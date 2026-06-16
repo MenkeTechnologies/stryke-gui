@@ -469,6 +469,19 @@ fn op_contrast_ratio(v: Value) -> Result<Value> {
     }))
 }
 
+/// WCAG 2.1 relative luminance of a single color (`color` as `[r,g,b]` or
+/// `{r,g,b}`, components 0-255), in [0,1] — the building block `contrast_ratio`
+/// combines. A common use is picking readable text: luminance > ~0.5 means a
+/// light background (use dark text). Pure.
+fn op_relative_luminance(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    Ok(json!({ "luminance": relative_luminance(r, g, b) }))
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSL per
 /// the CSS Color spec: `h` in degrees [0,360), `s` and `l` in percent [0,100].
 /// Useful for deriving hover/active shades by nudging lightness. Pure.
@@ -676,6 +689,11 @@ pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__contrast_ratio(args: *const c_char) -> *const c_char {
     ffi_call(args, op_contrast_ratio)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__relative_luminance(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_relative_luminance)
 }
 
 #[no_mangle]
@@ -936,6 +954,39 @@ mod tests {
         assert_eq!(blue["aa_normal"], json!(true));
         assert_eq!(blue["aaa_normal"], json!(false));
         assert!(op_contrast_ratio(json!({"a": [0, 0, 0]})).is_err());
+    }
+
+    #[test]
+    fn relative_luminance_matches_wcag_endpoints() {
+        let lum = |c: Value| {
+            op_relative_luminance(json!({ "color": c })).unwrap()["luminance"]
+                .as_f64()
+                .unwrap()
+        };
+        // Black is 0, white is 1 (the luminance endpoints).
+        assert!(lum(json!([0, 0, 0])).abs() < 1e-9);
+        assert!((lum(json!([255, 255, 255])) - 1.0).abs() < 1e-9);
+        // Pure channels carry their WCAG weights exactly.
+        assert!(
+            (lum(json!([255, 0, 0])) - 0.2126).abs() < 1e-9,
+            "red weight"
+        );
+        assert!(
+            (lum(json!([0, 255, 0])) - 0.7152).abs() < 1e-9,
+            "green weight"
+        );
+        assert!(
+            (lum(json!([0, 0, 255])) - 0.0722).abs() < 1e-9,
+            "blue weight"
+        );
+        // Agrees with the value contrast_ratio derives: CR(c, black) = (L+0.05)/0.05.
+        let l = lum(json!({"r": 0x25, "g": 0x63, "b": 0xeb}));
+        let cr = op_contrast_ratio(json!({"a": [0x25, 0x63, 0xeb], "b": [0, 0, 0]})).unwrap()
+            ["ratio"]
+            .as_f64()
+            .unwrap();
+        assert!(((l + 0.05) / 0.05 * 100.0).round() / 100.0 - cr < 1e-9);
+        assert!(op_relative_luminance(json!({})).is_err());
     }
 
     #[test]

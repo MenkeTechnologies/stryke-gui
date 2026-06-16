@@ -55,6 +55,12 @@ assert_eq $gray->{aa_normal}, 0,   "contrast_ratio: 4.48 just misses AA normal (
 assert_ok $gray->{aa_large},       "contrast_ratio: 4.48 clears AA large (3.0)"
 assert_eq GUI::contrast_ratio([18, 52, 86], [18, 52, 86])->{ratio}, 1, "contrast_ratio: identical colors are 1:1"
 
+# relative_luminance: WCAG building block (0 black .. 1 white).
+assert_eq GUI::relative_luminance([0, 0, 0]),       0, "relative_luminance: black is 0"
+assert_eq GUI::relative_luminance([255, 255, 255]), 1, "relative_luminance: white is 1"
+assert_gt GUI::relative_luminance([0, 255, 0]), GUI::relative_luminance([255, 0, 0]), "relative_luminance: green outweighs red"
+assert_gt GUI::relative_luminance([255, 255, 255]), 0.5, "relative_luminance: white is a light color (use dark text)"
+
 # to_hsl: RGB → HSL (CSS reference colors). Bounds avoid float-repr fragility.
 val $red = GUI::to_hsl([255, 0, 0])
 assert_eq $red->{h}, 0,   "to_hsl: red hue 0"

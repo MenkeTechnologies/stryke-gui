@@ -306,6 +306,13 @@ fn GUI::color_distance ($a, $b) {
     GUI::_decode("color_distance", gui__color_distance(to_json({ a => $a, b => $b })))
 }
 
+## Blend two RGB colors $a and $b (each [r,g,b] or { r, g, b }) by $weight — the
+## fraction of $b in the result (default 0.5, clamped 0-1). Linear sRGB
+## interpolation (gamma-naive). Returns { r, g, b, hex }. For tints/shades.
+fn GUI::mix ($a, $b, $weight = 0.5) {
+    GUI::_decode("mix", gui__mix(to_json({ a => $a, b => $b, weight => $weight })))
+}
+
 ## WCAG 2.1 contrast ratio between two RGB colors $a and $b (each [r,g,b] or
 ## { r, g, b }) → { ratio, aa_normal, aa_large, aaa_normal, aaa_large }. ratio is
 ## 1 (identical) to 21 (black vs white); the booleans report whether the pair

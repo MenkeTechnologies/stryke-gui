@@ -432,6 +432,27 @@ fn op_color_distance(v: Value) -> Result<Value> {
     Ok(json!({"manhattan": manhattan, "euclidean": euclidean}))
 }
 
+/// Blend two RGB colors `a` and `b` (each `[r,g,b]` or `{r,g,b}`) by `weight` —
+/// the fraction of `b` in the result (default 0.5, an even mix; clamped to
+/// [0,1]). Components are linearly interpolated in sRGB (a simple, gamma-naive
+/// blend — not perceptual) and rounded; `weight` 0 returns `a`, 1 returns `b`.
+/// For tints, shades, and gradient stops. Returns `{r, g, b, hex}` with 0-255
+/// components. Pure.
+fn op_mix(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let w = v
+        .get("weight")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
+    let lerp = |x: i64, y: i64| -> u8 {
+        (((x as f64) * (1.0 - w) + (y as f64) * w).round() as i64).clamp(0, 255) as u8
+    };
+    let (r, g, b) = (lerp(ar, br), lerp(ag, bg), lerp(ab, bb));
+    Ok(json!({"r": r, "g": g, "b": b, "hex": format!("#{r:02x}{g:02x}{b:02x}")}))
+}
+
 /// WCAG 2.1 relative luminance of an sRGB color (components 0-255), in [0,1].
 /// Each channel is linearized (`c/12.92` below the 0.03928 knee, else
 /// `((c+0.055)/1.055)^2.4`) and weighted 0.2126/0.7152/0.0722.
@@ -745,6 +766,11 @@ pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__mix(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_mix)
+}
+
+#[no_mangle]
 pub extern "C" fn gui__contrast_ratio(args: *const c_char) -> *const c_char {
     ffi_call(args, op_contrast_ratio)
 }
@@ -980,6 +1006,40 @@ mod tests {
         assert_eq!(v["euclidean"], json!(5.0), "3-4-5 triangle");
         let same = op_color_distance(json!({"a": [10, 20, 30], "b": [10, 20, 30]})).unwrap();
         assert_eq!(same["manhattan"], json!(0));
+    }
+
+    #[test]
+    fn mix_blends_by_weight() {
+        // Default weight 0.5: an even mix of black and white is mid-gray.
+        let g = op_mix(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap();
+        assert_eq!(g["hex"], json!("#808080")); // round(127.5) = 128
+                                                // weight 0 returns `a`, 1 returns `b`.
+        assert_eq!(
+            op_mix(json!({"a": [0, 0, 0], "b": [255, 255, 255], "weight": 0.0})).unwrap()["hex"],
+            json!("#000000")
+        );
+        assert_eq!(
+            op_mix(json!({"a": [0, 0, 0], "b": [255, 255, 255], "weight": 1.0})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        // Red↔blue even mix is purple; both color shapes accepted.
+        assert_eq!(
+            op_mix(json!({"a": [255, 0, 0], "b": {"r": 0, "g": 0, "b": 255}})).unwrap()["hex"],
+            json!("#800080")
+        );
+        // A fractional weight interpolates per channel.
+        let q = op_mix(json!({"a": [0, 0, 0], "b": [200, 100, 40], "weight": 0.25})).unwrap();
+        assert_eq!(q["r"], json!(50));
+        assert_eq!(q["g"], json!(25));
+        assert_eq!(q["b"], json!(10));
+        // Out-of-range weight clamps.
+        assert_eq!(
+            op_mix(json!({"a": [10, 10, 10], "b": [200, 200, 200], "weight": 5.0})).unwrap()["hex"],
+            json!("#c8c8c8") // clamped to 1.0 → all b
+        );
+        // Bad/missing color shape errors.
+        assert!(op_mix(json!({"a": [1, 2], "b": [3, 4, 5]})).is_err());
+        assert!(op_mix(json!({"b": [3, 4, 5]})).is_err());
     }
 
     #[test]

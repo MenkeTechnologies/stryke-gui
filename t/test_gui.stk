@@ -45,6 +45,14 @@ val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
 assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
 assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"
 
+# mix: weighted sRGB blend of two colors.
+assert_eq GUI::mix([0, 0, 0], [255, 255, 255])->{hex}, "#808080", "mix: even mix of black+white is mid-gray"
+assert_eq GUI::mix([0, 0, 0], [255, 255, 255], 0)->{hex}, "#000000", "mix: weight 0 → a"
+assert_eq GUI::mix([0, 0, 0], [255, 255, 255], 1)->{hex}, "#ffffff", "mix: weight 1 → b"
+assert_eq GUI::mix([255, 0, 0], [0, 0, 255])->{hex}, "#800080", "mix: red+blue → purple"
+assert_eq GUI::mix([0, 0, 0], [200, 100, 40], 0.25)->{r}, 50, "mix: fractional weight interpolates"
+assert_dies fn { GUI::mix([1, 2], [3, 4, 5]) }, "mix: rejects a malformed color"
+
 # contrast_ratio: WCAG 2.1 ratio + threshold flags.
 val $bw = GUI::contrast_ratio([0, 0, 0], [255, 255, 255])
 assert_eq $bw->{ratio}, 21,        "contrast_ratio: black/white is 21:1"

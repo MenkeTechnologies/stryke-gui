@@ -603,6 +603,51 @@ fn op_to_hsv(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert an HSV color (`h` degrees, `s`/`v` percent) back to RGB — the inverse
+/// of `to_hsv`, mirroring `from_hsl`. `h` is normalized mod 360; `s`/`v` clamp to
+/// [0,100]. Returns `{r, g, b, hex}` with components rounded to 0-255. Pure.
+fn op_from_hsv(v: Value) -> Result<Value> {
+    let h = v.get("h").and_then(Value::as_f64).unwrap_or(0.0);
+    let s = v
+        .get("s")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    let val = v
+        .get("v")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        / 100.0;
+    let h = h.rem_euclid(360.0);
+    let c = val * s;
+    let hp = h / 60.0;
+    let x = c * (1.0 - ((hp % 2.0) - 1.0).abs());
+    let (r1, g1, b1) = if hp < 1.0 {
+        (c, x, 0.0)
+    } else if hp < 2.0 {
+        (x, c, 0.0)
+    } else if hp < 3.0 {
+        (0.0, c, x)
+    } else if hp < 4.0 {
+        (0.0, x, c)
+    } else if hp < 5.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    let m = val - c;
+    let to_u8 = |y: f64| ((y + m) * 255.0).round() as u8;
+    let (r, g, b) = (to_u8(r1), to_u8(g1), to_u8(b1));
+    Ok(json!({
+        "r": r,
+        "g": g,
+        "b": b,
+        "hex": format!("#{r:02x}{g:02x}{b:02x}"),
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
@@ -611,6 +656,11 @@ pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__to_hsv(args: *const c_char) -> *const c_char {
     ffi_call(args, op_to_hsv)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_hsv(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_hsv)
 }
 
 #[no_mangle]
@@ -999,6 +1049,59 @@ mod tests {
         // Hue wraps; out-of-range s/l clamp.
         assert_eq!(
             op_from_hsl(json!({"h": 360, "s": 100, "l": 50})).unwrap()["hex"],
+            json!("#ff0000"),
+            "360° wraps to 0° (red)"
+        );
+    }
+
+    #[test]
+    fn from_hsv_inverts_to_hsv_for_reference_colors() {
+        // Reference HSV → exact RGB + hex (v is the brightest channel).
+        assert_eq!(
+            op_from_hsv(json!({"h": 0, "s": 100, "v": 100})).unwrap()["hex"],
+            json!("#ff0000")
+        );
+        assert_eq!(
+            op_from_hsv(json!({"h": 120, "s": 100, "v": 100})).unwrap()["hex"],
+            json!("#00ff00")
+        );
+        assert_eq!(
+            op_from_hsv(json!({"h": 30, "s": 100, "v": 100})).unwrap()["hex"],
+            json!("#ff8000"),
+            "orange"
+        );
+        // Achromatic: s0 → grey scaled by v (HSV v is the level, not HSL's l).
+        assert_eq!(
+            op_from_hsv(json!({"h": 0, "s": 0, "v": 100})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        assert_eq!(
+            op_from_hsv(json!({"h": 0, "s": 0, "v": 0})).unwrap()["hex"],
+            json!("#000000")
+        );
+        // Round-trip: RGB → to_hsv → from_hsv reproduces the original.
+        for rgb in [[255, 0, 0], [0, 255, 255], [255, 128, 0], [128, 128, 128]] {
+            let hsv = op_to_hsv(json!({"color": rgb})).unwrap();
+            let back = op_from_hsv(json!({"h": hsv["h"], "s": hsv["s"], "v": hsv["v"]})).unwrap();
+            assert_eq!(
+                back["r"].as_i64().unwrap(),
+                rgb[0],
+                "r round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["g"].as_i64().unwrap(),
+                rgb[1],
+                "g round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["b"].as_i64().unwrap(),
+                rgb[2],
+                "b round-trips for {rgb:?}"
+            );
+        }
+        // Hue wraps; out-of-range s/v clamp.
+        assert_eq!(
+            op_from_hsv(json!({"h": 360, "s": 100, "v": 100})).unwrap()["hex"],
             json!("#ff0000"),
             "360° wraps to 0° (red)"
         );

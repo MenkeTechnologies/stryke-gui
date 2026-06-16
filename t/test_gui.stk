@@ -92,4 +92,16 @@ assert_eq $rt->{r}, 18, "from_hsl round-trips r"
 assert_eq $rt->{g}, 52, "from_hsl round-trips g"
 assert_eq $rt->{b}, 86, "from_hsl round-trips b"
 
+# from_hsv: HSV → RGB (inverse of to_hsv).
+assert_eq GUI::from_hsv(0, 100, 100)->{hex},   "#ff0000", "from_hsv: red"
+assert_eq GUI::from_hsv(120, 100, 100)->{hex}, "#00ff00", "from_hsv: green"
+assert_eq GUI::from_hsv(30, 100, 100)->{hex},  "#ff8000", "from_hsv: orange (v is brightest channel)"
+assert_eq GUI::from_hsv(0, 0, 0)->{hex},       "#000000", "from_hsv: black"
+# round-trip: RGB → HSV → RGB reproduces the original.
+val $v = GUI::to_hsv([255, 128, 0])
+val $vrt = GUI::from_hsv($v->{h}, $v->{s}, $v->{v})
+assert_eq $vrt->{r}, 255, "from_hsv round-trips r"
+assert_eq $vrt->{g}, 128, "from_hsv round-trips g"
+assert_eq $vrt->{b}, 0,   "from_hsv round-trips b"
+
 test_run

@@ -334,3 +334,10 @@ fn GUI::to_hsv ($color) {
 fn GUI::from_hsl ($h, $s, $l) {
     GUI::_decode("from_hsl", gui__from_hsl(to_json({ h => $h, s => $s, l => $l })))
 }
+
+## Convert HSV/HSB back to RGB — inverse of to_hsv. $h is in degrees (wrapped
+## into 0-360), $s and $v in percent (clamped 0-100). Returns a hashref
+## { r, g, b, hex }.
+fn GUI::from_hsv ($h, $s, $v) {
+    GUI::_decode("from_hsv", gui__from_hsv(to_json({ h => $h, s => $s, v => $v })))
+}

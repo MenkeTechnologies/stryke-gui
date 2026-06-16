@@ -190,6 +190,7 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::to_hsl($color)` | `{ h, s, l }` — RGB → HSL (CSS spec); h in degrees 0-360, s/l in percent; for deriving shades by nudging lightness |
 | `GUI::to_hsv($color)` | `{ h, s, v }` — RGB → HSV/HSB (the colour-picker model); v is the brightest channel (vs HSL's midpoint l) |
 | `GUI::from_hsl($h, $s, $l)` | `{ r, g, b, hex }` — HSL → RGB (CSS spec); inverse of `to_hsl`, h wraps, s/l clamp |
+| `GUI::from_hsv($h, $s, $v)` | `{ r, g, b, hex }` — HSV/HSB → RGB; inverse of `to_hsv`, h wraps, s/v clamp |
 
 ### Displays
 

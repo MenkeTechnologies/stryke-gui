@@ -350,6 +350,82 @@ fn op_parse_hotkey(v: Value) -> Result<Value> {
     Ok(json!({"keys": keys, "modifiers": modifiers, "key": key}))
 }
 
+/// Canonicalize a hotkey from parts into a single accelerator string — the
+/// normalizing inverse of `parse_hotkey`. Modifier aliases collapse to the W3C
+/// UI Events names (`ctrl`/`control` → `Control`; `alt`/`opt`/`option` → `Alt`;
+/// `shift` → `Shift`; `meta`/`cmd`/`command`/`super`/`win`/`windows` → `Meta`),
+/// duplicates are dropped, and the modifiers are emitted in the canonical order
+/// `Control, Alt, Shift, Meta` followed by the key. A single-letter key is
+/// upper-cased; other key names pass through trimmed. Accepts either the
+/// `parse_hotkey` shape (`keys` array, last entry is the key) or explicit
+/// `modifiers` + `key`. An unrecognized modifier is an error. Returns
+/// `{hotkey, modifiers, key}`. Pure.
+fn op_format_hotkey(v: Value) -> Result<Value> {
+    let (mods_in, key_in): (Vec<String>, String) =
+        if let Some(keys) = v.get("keys").and_then(Value::as_array) {
+            let ks: Vec<String> = keys
+                .iter()
+                .filter_map(|k| k.as_str().map(str::to_string))
+                .collect();
+            if ks.is_empty() {
+                return Err(anyhow::anyhow!("empty keys"));
+            }
+            let key = ks[ks.len() - 1].clone();
+            (ks[..ks.len() - 1].to_vec(), key)
+        } else {
+            let key = v
+                .get("key")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow::anyhow!("missing key"))?
+                .to_string();
+            let mods = v
+                .get("modifiers")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|m| m.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            (mods, key)
+        };
+    const ORDER: [&str; 4] = ["Control", "Alt", "Shift", "Meta"];
+    let canon = |m: &str| -> Option<&'static str> {
+        match m.trim().to_ascii_lowercase().as_str() {
+            "ctrl" | "control" | "ctl" => Some("Control"),
+            "alt" | "opt" | "option" => Some("Alt"),
+            "shift" => Some("Shift"),
+            "meta" | "cmd" | "command" | "super" | "win" | "windows" => Some("Meta"),
+            _ => None,
+        }
+    };
+    let mut present = [false; 4];
+    for m in &mods_in {
+        match canon(m) {
+            Some(c) => present[ORDER.iter().position(|x| *x == c).unwrap()] = true,
+            None => return Err(anyhow::anyhow!("unknown modifier `{m}`")),
+        }
+    }
+    let key = key_in.trim();
+    if key.is_empty() {
+        return Err(anyhow::anyhow!("empty key"));
+    }
+    let key = if key.chars().count() == 1 && key.chars().next().unwrap().is_ascii_alphabetic() {
+        key.to_ascii_uppercase()
+    } else {
+        key.to_string()
+    };
+    let modifiers: Vec<String> = ORDER
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| present[*i])
+        .map(|(_, c)| c.to_string())
+        .collect();
+    let mut parts = modifiers.clone();
+    parts.push(key.clone());
+    Ok(json!({"hotkey": parts.join("+"), "modifiers": modifiers, "key": key}))
+}
+
 /// Parse a color string `#rgb`, `#rrggbb`, or `rgb(r,g,b)` into
 /// `{r, g, b, hex}`. Pure.
 fn op_parse_color(v: Value) -> Result<Value> {
@@ -932,6 +1008,11 @@ pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__format_hotkey(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_format_hotkey)
+}
+
+#[no_mangle]
 pub extern "C" fn gui__to_hsv(args: *const c_char) -> *const c_char {
     ffi_call(args, op_to_hsv)
 }
@@ -1201,6 +1282,37 @@ mod tests {
         assert_eq!(single["modifiers"], json!([]));
         assert_eq!(single["key"], json!("enter"));
         assert!(op_parse_hotkey(json!({"hotkey": "  "})).is_err());
+    }
+
+    #[test]
+    fn format_hotkey_canonicalizes_and_inverts_parse_hotkey() {
+        // Explicit modifiers + key: aliases canonicalize, order is fixed.
+        let v = op_format_hotkey(json!({"modifiers": ["cmd", "shift"], "key": "a"})).unwrap();
+        assert_eq!(v["hotkey"], json!("Shift+Meta+A"));
+        assert_eq!(v["modifiers"], json!(["Shift", "Meta"]));
+        assert_eq!(v["key"], json!("A"));
+        // Out-of-order, aliased, duplicated modifiers all normalize.
+        let messy =
+            op_format_hotkey(json!({"modifiers": ["option", "ctrl", "control"], "key": "Tab"}))
+                .unwrap();
+        assert_eq!(
+            messy["hotkey"],
+            json!("Control+Alt+Tab"),
+            "order Control,Alt,Shift,Meta; dup dropped"
+        );
+        // Consumes the parse_hotkey `keys` shape directly (round-trip normalize).
+        let parsed = op_parse_hotkey(json!({"hotkey": "super+alt+k"})).unwrap();
+        let back = op_format_hotkey(parsed).unwrap();
+        assert_eq!(back["hotkey"], json!("Alt+Meta+K"));
+        // A modifier-free key just upper-cases a single letter.
+        assert_eq!(
+            op_format_hotkey(json!({"key": "z"})).unwrap()["hotkey"],
+            json!("Z")
+        );
+        // Errors: unknown modifier, empty key, no key.
+        assert!(op_format_hotkey(json!({"modifiers": ["hyper"], "key": "a"})).is_err());
+        assert!(op_format_hotkey(json!({"key": "   "})).is_err());
+        assert!(op_format_hotkey(json!({})).is_err());
     }
 
     #[test]

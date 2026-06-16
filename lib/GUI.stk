@@ -294,6 +294,18 @@ fn GUI::parse_hotkey ($hotkey) {
     GUI::_decode("parse_hotkey", gui__parse_hotkey(to_json({ hotkey => $hotkey })))
 }
 
+## Canonicalize a hotkey from parts into one accelerator string — the normalizing
+## inverse of parse_hotkey. Modifier aliases collapse to the W3C UI Events names
+## (ctrl/control→Control, alt/opt/option→Alt, shift→Shift,
+## meta/cmd/command/super/win→Meta), duplicates drop, and they emit in the
+## canonical order Control, Alt, Shift, Meta before the key (a single letter is
+## upper-cased). Accepts the parse_hotkey shape ({ keys }) or explicit
+## { modifiers, key }. $opts is a hashref. Returns a hashref { hotkey, modifiers,
+## key }.
+fn GUI::format_hotkey ($opts) {
+    GUI::_decode("format_hotkey", gui__format_hotkey(to_json($opts)))
+}
+
 ## Parse a color string ("#rgb", "#rrggbb", or "rgb(r,g,b)") into a hashref
 ## { r, g, b, hex }.
 fn GUI::parse_color ($color) {

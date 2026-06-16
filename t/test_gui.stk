@@ -34,6 +34,13 @@ assert_eq $hk->{key},                    "a", "parse_hotkey: main key lowercased
 assert_eq scalar(@{ $hk->{modifiers} }), 2,   "parse_hotkey: two modifiers"
 assert_eq $hk->{modifiers}[0],           "ctrl", "parse_hotkey: first modifier"
 
+# format_hotkey: canonicalize parts into one accelerator (inverse of parse_hotkey).
+assert_eq GUI::format_hotkey({ modifiers => ["cmd", "shift"], key => "a" })->{hotkey}, "Shift+Meta+A", "format_hotkey: aliases + order + upper-case key"
+assert_eq GUI::format_hotkey({ modifiers => ["option", "ctrl", "control"], key => "Tab" })->{hotkey}, "Control+Alt+Tab", "format_hotkey: dedupes and orders modifiers"
+assert_eq GUI::format_hotkey(GUI::parse_hotkey("super+alt+k"))->{hotkey}, "Alt+Meta+K", "format_hotkey: consumes the parse_hotkey shape (round-trip normalize)"
+assert_eq GUI::format_hotkey({ key => "z" })->{hotkey}, "Z", "format_hotkey: a bare key just upper-cases a single letter"
+assert_dies fn { GUI::format_hotkey({ modifiers => ["hyper"], key => "a" }) }, "format_hotkey: rejects an unknown modifier"
+
 val $c = GUI::parse_color("#ff8800")
 assert_eq $c->{r},   255,        "parse_color: red"
 assert_eq $c->{g},   136,        "parse_color: green"

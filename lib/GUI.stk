@@ -328,6 +328,14 @@ fn GUI::rotate_hue ($color, $degrees) {
     GUI::_decode("rotate_hue", gui__rotate_hue(to_json({ color => $color, degrees => $degrees })))
 }
 
+## Nudge a color's HSL lightness by $delta percentage points (keeping hue and
+## saturation) — lighten for a positive delta, darken for a negative one. $color
+## is [r,g,b] or { r, g, b }; the result l is clamped to [0,100]. Returns
+## { r, g, b, hex, l } with the resulting lightness.
+fn GUI::adjust_lightness ($color, $delta) {
+    GUI::_decode("adjust_lightness", gui__adjust_lightness(to_json({ color => $color, delta => $delta })))
+}
+
 ## WCAG 2.1 contrast ratio between two RGB colors $a and $b (each [r,g,b] or
 ## { r, g, b }) → { ratio, aa_normal, aa_large, aaa_normal, aaa_large }. ratio is
 ## 1 (identical) to 21 (black vs white); the booleans report whether the pair

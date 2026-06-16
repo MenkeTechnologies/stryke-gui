@@ -656,6 +656,33 @@ fn op_rotate_hue(v: Value) -> Result<Value> {
     Ok(out)
 }
 
+/// Nudge a color's HSL lightness by `delta` percentage points, keeping its hue
+/// and saturation — `lighten` for a positive delta, `darken` for a negative one
+/// (the basis of hover/active/disabled shades). The color is converted to HSL,
+/// `l` shifted and clamped to [0,100], and converted back. opts: `color` (`[r,g,b]`
+/// or `{r,g,b}`), `delta` (or `amount`, percentage points). Returns
+/// `{r, g, b, hex, l}` where `l` is the resulting lightness. Pure.
+fn op_adjust_lightness(v: Value) -> Result<Value> {
+    let delta = v
+        .get("delta")
+        .or_else(|| v.get("amount"))
+        .and_then(Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("missing delta"))?;
+    let color = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let hsl = op_to_hsl(json!({ "color": color }))?;
+    let h = hsl["h"].as_f64().unwrap_or(0.0);
+    let s = hsl["s"].as_f64().unwrap_or(0.0);
+    let l = hsl["l"].as_f64().unwrap_or(0.0);
+    let new_l = (l + delta).clamp(0.0, 100.0);
+    let mut out = op_from_hsl(json!({ "h": h, "s": s, "l": new_l }))?;
+    out["l"] = json!(new_l);
+    Ok(out)
+}
+
 /// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to HSV (a.k.a.
 /// HSB) — the model most colour pickers use: `h` in degrees [0,360), `s` and `v`
 /// in percent [0,100]. Distinct from HSL: `v` is the brightest channel, whereas
@@ -929,6 +956,11 @@ pub extern "C" fn gui__mix(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__rotate_hue(args: *const c_char) -> *const c_char {
     ffi_call(args, op_rotate_hue)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__adjust_lightness(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_adjust_lightness)
 }
 
 #[no_mangle]
@@ -1270,6 +1302,34 @@ mod tests {
         // Missing degrees / color errors.
         assert!(op_rotate_hue(json!({"color": [255, 0, 0]})).is_err());
         assert!(op_rotate_hue(json!({"degrees": 90})).is_err());
+    }
+
+    #[test]
+    fn adjust_lightness_lightens_and_darkens() {
+        let hex = |color: Value, delta: f64| {
+            op_adjust_lightness(json!({ "color": color, "delta": delta })).unwrap()["hex"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        // Red is HSL(0,100%,50%): +25 → HSL(0,100%,75%) = #ff8080, +50 → white.
+        assert_eq!(hex(json!([255, 0, 0]), 25.0), "#ff8080");
+        assert_eq!(hex(json!([255, 0, 0]), 50.0), "#ffffff");
+        // A negative delta darkens; -50 takes red to black.
+        assert_eq!(hex(json!([255, 0, 0]), -50.0), "#000000");
+        // Hue and saturation are preserved (only l moves): red stays red-ish.
+        let lighter = op_adjust_lightness(json!({"color": [255, 0, 0], "delta": 10.0})).unwrap();
+        assert_eq!(lighter["l"], json!(60.0));
+        // Clamping at both ends; `amount` is an alias for `delta`.
+        assert_eq!(hex(json!([0, 0, 0]), 1000.0), "#ffffff");
+        assert_eq!(
+            op_adjust_lightness(json!({"color": [255, 255, 255], "amount": -100.0})).unwrap()
+                ["hex"],
+            json!("#000000")
+        );
+        // Missing delta / color errors.
+        assert!(op_adjust_lightness(json!({"color": [255, 0, 0]})).is_err());
+        assert!(op_adjust_lightness(json!({"delta": 10})).is_err());
     }
 
     #[test]

@@ -69,6 +69,14 @@ assert_eq GUI::rotate_hue([255, 0, 0], -30)->{hex}, GUI::rotate_hue([255, 0, 0],
 assert_eq GUI::rotate_hue([128, 128, 128], 90)->{hex}, "#808080", "rotate_hue: grey is unchanged (no chroma)"
 assert_dies fn { GUI::rotate_hue([255, 0, 0]) }, "rotate_hue: requires degrees"
 
+# adjust_lightness: nudge HSL lightness (lighten/darken).
+assert_eq GUI::adjust_lightness([255, 0, 0], 25)->{hex}, "#ff8080", "adjust_lightness: red +25 → lighter red"
+assert_eq GUI::adjust_lightness([255, 0, 0], 50)->{hex}, "#ffffff", "adjust_lightness: red +50 → white"
+assert_eq GUI::adjust_lightness([255, 0, 0], -50)->{hex}, "#000000", "adjust_lightness: red -50 → black"
+assert_eq GUI::adjust_lightness([255, 0, 0], 10)->{l}, 60, "adjust_lightness: reports the new lightness"
+assert_eq GUI::adjust_lightness([0, 0, 0], 1000)->{hex}, "#ffffff", "adjust_lightness: clamps at 100"
+assert_dies fn { GUI::adjust_lightness([255, 0, 0]) }, "adjust_lightness: requires delta"
+
 # contrast_ratio: WCAG 2.1 ratio + threshold flags.
 val $bw = GUI::contrast_ratio([0, 0, 0], [255, 255, 255])
 assert_eq $bw->{ratio}, 21,        "contrast_ratio: black/white is 21:1"

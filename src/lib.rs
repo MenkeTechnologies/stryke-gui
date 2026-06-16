@@ -661,6 +661,54 @@ fn op_from_hsv(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to CMYK using
+/// the standard profile-free formula (`K = 1 - max(r,g,b)`; the rest scaled by
+/// `1-K`). The print-world fourth space alongside `to_hsl`/`to_hsv`. `c,m,y,k`
+/// are percentages [0,100]; pure black reports `k=100` with `c=m=y=0`. Pure.
+fn op_to_cmyk(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (r, g, b) = (ri as f64 / 255.0, gi as f64 / 255.0, bi as f64 / 255.0);
+    let k = 1.0 - r.max(g).max(b);
+    let (c, m, y) = if (1.0 - k).abs() < f64::EPSILON {
+        (0.0, 0.0, 0.0) // pure black: avoid divide-by-zero
+    } else {
+        let d = 1.0 - k;
+        ((1.0 - r - k) / d, (1.0 - g - k) / d, (1.0 - b - k) / d)
+    };
+    Ok(json!({
+        "c": c * 100.0,
+        "m": m * 100.0,
+        "y": y * 100.0,
+        "k": k * 100.0,
+    }))
+}
+
+/// Convert CMYK back to RGB — the inverse of `to_cmyk`. opts: `c`, `m`, `y`, `k`
+/// (percent, clamped to [0,100]). Returns `{r, g, b, hex}` with 0-255
+/// components. Pure.
+fn op_from_cmyk(v: Value) -> Result<Value> {
+    let comp = |k: &str| {
+        v.get(k)
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+            .clamp(0.0, 100.0)
+            / 100.0
+    };
+    let (c, m, y, k) = (comp("c"), comp("m"), comp("y"), comp("k"));
+    let to_u8 = |chan: f64| (255.0 * (1.0 - chan) * (1.0 - k)).round() as u8;
+    let (r, g, b) = (to_u8(c), to_u8(m), to_u8(y));
+    Ok(json!({
+        "r": r,
+        "g": g,
+        "b": b,
+        "hex": format!("#{r:02x}{g:02x}{b:02x}"),
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
@@ -674,6 +722,16 @@ pub extern "C" fn gui__to_hsv(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__from_hsv(args: *const c_char) -> *const c_char {
     ffi_call(args, op_from_hsv)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_cmyk(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_cmyk)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_cmyk(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_cmyk)
 }
 
 #[no_mangle]
@@ -1155,6 +1213,71 @@ mod tests {
             op_from_hsv(json!({"h": 360, "s": 100, "v": 100})).unwrap()["hex"],
             json!("#ff0000"),
             "360° wraps to 0° (red)"
+        );
+    }
+
+    #[test]
+    fn cmyk_round_trips_rgb() {
+        // Oracle-verified reference colors (standard profile-free conversion).
+        let approx = |v: &Value, key: &str, want: f64| {
+            let got = v[key].as_f64().unwrap();
+            assert!((got - want).abs() < 0.01, "{key}: got {got}, want {want}");
+        };
+        let red = op_to_cmyk(json!({"color": [255, 0, 0]})).unwrap();
+        approx(&red, "c", 0.0);
+        approx(&red, "m", 100.0);
+        approx(&red, "y", 100.0);
+        approx(&red, "k", 0.0);
+        // Pure black: K=100, the CMY channels stay 0 (no divide-by-zero).
+        let black = op_to_cmyk(json!({"color": [0, 0, 0]})).unwrap();
+        approx(&black, "c", 0.0);
+        approx(&black, "k", 100.0);
+        // White: all zero.
+        let white = op_to_cmyk(json!({"color": [255, 255, 255]})).unwrap();
+        approx(&white, "k", 0.0);
+        approx(&white, "c", 0.0);
+        // A mid color, oracle: (64,128,192) → c66.667 m33.333 y0 k24.706.
+        let mid = op_to_cmyk(json!({"color": {"r": 64, "g": 128, "b": 192}})).unwrap();
+        approx(&mid, "c", 66.667);
+        approx(&mid, "m", 33.333);
+        approx(&mid, "y", 0.0);
+        approx(&mid, "k", 24.706);
+        // from_cmyk inverts to_cmyk exactly for every reference color.
+        for rgb in [
+            [255, 0, 0],
+            [0, 0, 0],
+            [255, 255, 255],
+            [64, 128, 192],
+            [255, 128, 0],
+            [17, 34, 51],
+        ] {
+            let cmyk = op_to_cmyk(json!({ "color": rgb })).unwrap();
+            let back = op_from_cmyk(json!({
+                "c": cmyk["c"], "m": cmyk["m"], "y": cmyk["y"], "k": cmyk["k"],
+            }))
+            .unwrap();
+            assert_eq!(
+                back["r"].as_i64().unwrap(),
+                rgb[0],
+                "r round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["g"].as_i64().unwrap(),
+                rgb[1],
+                "g round-trips for {rgb:?}"
+            );
+            assert_eq!(
+                back["b"].as_i64().unwrap(),
+                rgb[2],
+                "b round-trips for {rgb:?}"
+            );
+        }
+        // Out-of-range CMYK clamps rather than producing garbage.
+        // c→100 (zeroes red), m→0, y→0 (full green+blue) = cyan.
+        assert_eq!(
+            op_from_cmyk(json!({"c": 200, "m": -50, "y": 0, "k": 0})).unwrap()["hex"],
+            json!("#00ffff"),
+            "c clamps to 100 (→0 red), m/y stay 0 (→cyan)"
         );
     }
 }

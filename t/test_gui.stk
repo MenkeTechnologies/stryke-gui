@@ -110,4 +110,21 @@ assert_eq $vrt->{r}, 255, "from_hsv round-trips r"
 assert_eq $vrt->{g}, 128, "from_hsv round-trips g"
 assert_eq $vrt->{b}, 0,   "from_hsv round-trips b"
 
+# to_cmyk / from_cmyk: the print-world fourth space (oracle-verified).
+val $cred = GUI::to_cmyk([255, 0, 0])
+assert_eq $cred->{m}, 100, "to_cmyk: red is full magenta"
+assert_eq $cred->{y}, 100, "to_cmyk: red is full yellow"
+assert_eq $cred->{k}, 0,   "to_cmyk: red has no black"
+val $cblack = GUI::to_cmyk([0, 0, 0])
+assert_eq $cblack->{k}, 100, "to_cmyk: black is k=100"
+assert_eq $cblack->{c}, 0,   "to_cmyk: black keeps cmy at 0"
+assert_eq GUI::from_cmyk(0, 100, 100, 0)->{hex}, "#ff0000", "from_cmyk: rebuilds red"
+assert_eq GUI::from_cmyk(0, 0, 0, 100)->{hex},   "#000000", "from_cmyk: k=100 is black"
+# round-trip: RGB → CMYK → RGB reproduces the original.
+val $cm = GUI::to_cmyk([64, 128, 192])
+val $crt = GUI::from_cmyk($cm->{c}, $cm->{m}, $cm->{y}, $cm->{k})
+assert_eq $crt->{r}, 64,  "from_cmyk round-trips r"
+assert_eq $crt->{g}, 128, "from_cmyk round-trips g"
+assert_eq $crt->{b}, 192, "from_cmyk round-trips b"
+
 test_run

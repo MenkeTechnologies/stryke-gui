@@ -192,6 +192,8 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::to_hsv($color)` | `{ h, s, v }` — RGB → HSV/HSB (the colour-picker model); v is the brightest channel (vs HSL's midpoint l) |
 | `GUI::from_hsl($h, $s, $l)` | `{ r, g, b, hex }` — HSL → RGB (CSS spec); inverse of `to_hsl`, h wraps, s/l clamp |
 | `GUI::from_hsv($h, $s, $v)` | `{ r, g, b, hex }` — HSV/HSB → RGB; inverse of `to_hsv`, h wraps, s/v clamp |
+| `GUI::to_cmyk($color)` | `{ c, m, y, k }` — RGB → CMYK (standard profile-free), percentages; pure black is k=100 |
+| `GUI::from_cmyk($c, $m, $y, $k)` | `{ r, g, b, hex }` — CMYK → RGB; inverse of `to_cmyk`, components clamp to 0-100 |
 
 ### Displays
 

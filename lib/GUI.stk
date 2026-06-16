@@ -348,3 +348,16 @@ fn GUI::from_hsl ($h, $s, $l) {
 fn GUI::from_hsv ($h, $s, $v) {
     GUI::_decode("from_hsv", gui__from_hsv(to_json({ h => $h, s => $s, v => $v })))
 }
+
+## Convert an RGB color ([r,g,b] or { r, g, b }, 0-255) to CMYK (standard
+## profile-free formula) → { c, m, y, k } as percentages 0-100. The print-world
+## space alongside to_hsl/to_hsv; pure black is k=100, c=m=y=0.
+fn GUI::to_cmyk ($color) {
+    GUI::_decode("to_cmyk", gui__to_cmyk(to_json({ color => $color })))
+}
+
+## Convert CMYK back to RGB — inverse of to_cmyk. $c, $m, $y, $k in percent
+## (clamped 0-100). Returns a hashref { r, g, b, hex }.
+fn GUI::from_cmyk ($c, $m, $y, $k) {
+    GUI::_decode("from_cmyk", gui__from_cmyk(to_json({ c => $c, m => $m, y => $y, k => $k })))
+}

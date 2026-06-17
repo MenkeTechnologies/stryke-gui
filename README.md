@@ -203,6 +203,7 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::from_hwb($h, $w, $b)` | `{ r, g, b, hex }` — HWB → RGB; inverse of `to_hwb`; `w+b≥100` → gray `w/(w+b)`, else pure hue scaled by `1-w-b` plus `w` |
 | `GUI::to_cmyk($color)` | `{ c, m, y, k }` — RGB → CMYK (standard profile-free), percentages; pure black is k=100 |
 | `GUI::from_cmyk($c, $m, $y, $k)` | `{ r, g, b, hex }` — CMYK → RGB; inverse of `to_cmyk`, components clamp to 0-100 |
+| `GUI::to_lab($color)` | `{ l, a, b }` — RGB → CIELAB (D65), the perceptual space `delta_e` measures distance in; `L*` 0–100, `a*` green/red, `b*` blue/yellow |
 
 ### Displays
 

@@ -1100,6 +1100,22 @@ fn op_to_cmyk(v: Value) -> Result<Value> {
     }))
 }
 
+/// Convert an RGB color to CIELAB (D65) — the perceptually-uniform space `delta_e`
+/// measures distance in, exposed here as a standalone conversion alongside
+/// to_hsl/to_hsv/to_hwb/to_cmyk. `L*` is 0 (black) to 100 (white); `a*` is
+/// green(−)↔red(+) and `b*` is blue(−)↔yellow(+), both unbounded but typically
+/// ±128. Uses the same sRGB→XYZ→Lab pipeline as `delta_e`. opts: `color` (or `a`),
+/// `[r,g,b]` or `{r,g,b}`. Returns `{l, a, b}`. Pure.
+fn op_to_lab(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (l, a, b) = rgb_to_lab(ri, gi, bi);
+    Ok(json!({ "l": l, "a": a, "b": b }))
+}
+
 /// Convert CMYK back to RGB — the inverse of `to_cmyk`. opts: `c`, `m`, `y`, `k`
 /// (percent, clamped to [0,100]). Returns `{r, g, b, hex}` with 0-255
 /// components. Pure.
@@ -1155,6 +1171,11 @@ pub extern "C" fn gui__from_hwb(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__to_cmyk(args: *const c_char) -> *const c_char {
     ffi_call(args, op_to_cmyk)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_lab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_lab)
 }
 
 #[no_mangle]
@@ -1546,6 +1567,43 @@ mod tests {
         assert!((lr - 53.2408).abs() < 0.05, "red L");
         assert!((ar - 80.0925).abs() < 0.05, "red a");
         assert!((br - 67.2032).abs() < 0.05, "red b");
+    }
+
+    #[test]
+    fn to_lab_exposes_the_cielab_conversion() {
+        let lab = |c: Value| {
+            let v = op_to_lab(json!({ "color": c })).unwrap();
+            (
+                v["l"].as_f64().unwrap(),
+                v["a"].as_f64().unwrap(),
+                v["b"].as_f64().unwrap(),
+            )
+        };
+        // White → L100, a/b ≈ 0; pure red → reference CIELAB.
+        let (lw, aw, bw) = lab(json!([255, 255, 255]));
+        assert!((lw - 100.0).abs() < 1e-3 && aw.abs() < 0.02 && bw.abs() < 0.02);
+        let (lr, ar, br) = lab(json!([255, 0, 0]));
+        assert!(
+            (lr - 53.2408).abs() < 0.05
+                && (ar - 80.0925).abs() < 0.05
+                && (br - 67.2032).abs() < 0.05
+        );
+        // Matches the lab coordinates delta_e surfaces for the same color, and
+        // accepts the {r,g,b} object shape and the `a` alias.
+        let from_de = op_delta_e(json!({"a": [0, 0, 255], "b": [0, 0, 0]})).unwrap();
+        let (lb, ab, bb) = lab(json!({"r": 0, "g": 0, "b": 255}));
+        assert!(
+            (lb - from_de["lab_a"]["l"].as_f64().unwrap()).abs() < 1e-4,
+            "agrees with delta_e's lab"
+        );
+        assert!(ab.is_finite() && bb.is_finite());
+        assert_eq!(
+            op_to_lab(json!({"a": [0, 0, 0]})).unwrap()["l"]
+                .as_f64()
+                .unwrap(),
+            0.0
+        );
+        assert!(op_to_lab(json!({})).is_err());
     }
 
     #[test]

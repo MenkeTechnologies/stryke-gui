@@ -197,4 +197,15 @@ assert_eq $crt->{r}, 64,  "from_cmyk round-trips r"
 assert_eq $crt->{g}, 128, "from_cmyk round-trips g"
 assert_eq $crt->{b}, 192, "from_cmyk round-trips b"
 
+# to_lab: RGB → CIELAB (D65), the perceptual space delta_e uses.
+val $lw = GUI::to_lab([255, 255, 255])
+assert_ok $lw->{l} > 99.99 && $lw->{l} < 100.01, "to_lab: white is L*=100"
+assert_ok abs($lw->{a}) < 0.02 && abs($lw->{b}) < 0.02, "to_lab: white is neutral (a*,b* ≈ 0)"
+val $lr = GUI::to_lab([255, 0, 0])
+assert_ok $lr->{l} > 53.1 && $lr->{l} < 53.3, "to_lab: red L* ≈ 53.24 (D65 reference)"
+assert_ok $lr->{a} > 80.0 && $lr->{a} < 80.2, "to_lab: red a* ≈ 80.09"
+assert_ok GUI::to_lab([0, 0, 0])->{l} < 0.001, "to_lab: black is L*=0"
+# agrees with the L* delta_e surfaces for the same color.
+assert_ok abs(GUI::to_lab([0, 0, 255])->{l} - GUI::delta_e([0, 0, 255], [0, 0, 0])->{lab_a}{l}) < 0.0001, "to_lab: matches delta_e's CIELAB"
+
 test_run

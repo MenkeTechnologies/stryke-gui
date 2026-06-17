@@ -430,6 +430,14 @@ fn GUI::to_cmyk ($color) {
     GUI::_decode("to_cmyk", gui__to_cmyk(to_json({ color => $color })))
 }
 
+## Convert an RGB color ([r,g,b] or { r, g, b }, 0-255) to CIELAB (D65) →
+## { l, a, b }. The perceptually-uniform space delta_e measures distance in,
+## exposed alongside to_hsl/to_hsv/to_hwb/to_cmyk. L* runs 0 (black) to 100
+## (white); a* is green(-)/red(+), b* is blue(-)/yellow(+).
+fn GUI::to_lab ($color) {
+    GUI::_decode("to_lab", gui__to_lab(to_json({ color => $color })))
+}
+
 ## Convert CMYK back to RGB — inverse of to_cmyk. $c, $m, $y, $k in percent
 ## (clamped 0-100). Returns a hashref { r, g, b, hex }.
 fn GUI::from_cmyk ($c, $m, $y, $k) {

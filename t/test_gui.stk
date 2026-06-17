@@ -59,6 +59,14 @@ val $d = GUI::color_distance([0, 0, 0], [3, 4, 0])
 assert_eq $d->{manhattan}, 7,   "color_distance: manhattan"
 assert_eq $d->{euclidean}, 5,   "color_distance: euclidean (3-4-5)"
 
+# delta_e: CIEDE2000 perceptual color difference (LAB-space, not RGB).
+assert_eq GUI::delta_e([10, 20, 30], [10, 20, 30])->{delta_e}, 0, "delta_e: identical colors → 0"
+val $bw = GUI::delta_e([0, 0, 0], [255, 255, 255])
+assert_ok $bw->{delta_e} > 99.9 && $bw->{delta_e} < 100.1, "delta_e: black↔white ≈ 100"
+val $rb = GUI::delta_e([255, 0, 0], [0, 0, 255])
+assert_ok $rb->{delta_e} > 50, "delta_e: red vs blue is a large perceptual difference"
+assert_ok $rb->{lab_a}{l} > 53.1 && $rb->{lab_a}{l} < 53.3, "delta_e: surfaces CIELAB L* of red (~53.24)"
+
 # mix: weighted sRGB blend of two colors.
 assert_eq GUI::mix([0, 0, 0], [255, 255, 255])->{hex}, "#808080", "mix: even mix of black+white is mid-gray"
 assert_eq GUI::mix([0, 0, 0], [255, 255, 255], 0)->{hex}, "#000000", "mix: weight 0 → a"

@@ -534,6 +534,126 @@ fn op_color_distance(v: Value) -> Result<Value> {
     Ok(json!({"manhattan": manhattan, "euclidean": euclidean}))
 }
 
+/// Linearize one 0-255 sRGB channel to 0-1 linear-light, per IEC 61966-2-1 (the
+/// 0.04045 colorimetric breakpoint — distinct from WCAG's 0.03928 luminance one).
+fn srgb_to_linear(c: i64) -> f64 {
+    let c = (c as f64 / 255.0).clamp(0.0, 1.0);
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// Convert an 0-255 sRGB color to CIELAB (D65). Linear sRGB → XYZ uses the
+/// standard sRGB/D65 matrix (Bruce Lindbloom); XYZ → L*a*b* normalizes by the D65
+/// white (Xn 0.950489, Yn 1, Zn 1.088840) and applies the CIE ε/κ nonlinearity.
+fn rgb_to_lab(r: i64, g: i64, b: i64) -> (f64, f64, f64) {
+    let (rl, gl, bl) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+    let x = 0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl;
+    let y = 0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl;
+    let z = 0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl;
+    let f = |t: f64| -> f64 {
+        const EPS: f64 = 216.0 / 24389.0;
+        const KAPPA: f64 = 24389.0 / 27.0;
+        if t > EPS {
+            t.cbrt()
+        } else {
+            (KAPPA * t + 16.0) / 116.0
+        }
+    };
+    let (fx, fy, fz) = (f(x / 0.950489), f(y), f(z / 1.088840));
+    (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+}
+
+/// CIEDE2000 (ΔE00) perceptual color difference between two CIELAB colors, with
+/// the parametric factors kL=kC=kH=1. Standard Sharma et al. (2005) formulation —
+/// see the unit tests for the published reference values it reproduces.
+fn ciede2000(l1: f64, a1: f64, b1: f64, l2: f64, a2: f64, b2: f64) -> f64 {
+    let deg = std::f64::consts::PI / 180.0;
+    let pow7 = |x: f64| x.powi(7);
+    let c1 = (a1 * a1 + b1 * b1).sqrt();
+    let c2 = (a2 * a2 + b2 * b2).sqrt();
+    let cbar = (c1 + c2) / 2.0;
+    let g = 0.5 * (1.0 - (pow7(cbar) / (pow7(cbar) + pow7(25.0))).sqrt());
+    let (a1p, a2p) = (a1 * (1.0 + g), a2 * (1.0 + g));
+    let c1p = (a1p * a1p + b1 * b1).sqrt();
+    let c2p = (a2p * a2p + b2 * b2).sqrt();
+    let cbarp = (c1p + c2p) / 2.0;
+    let hue = |ap: f64, bb: f64| -> f64 {
+        if ap == 0.0 && bb == 0.0 {
+            return 0.0;
+        }
+        let mut h = bb.atan2(ap) / deg;
+        if h < 0.0 {
+            h += 360.0;
+        }
+        h
+    };
+    let h1p = hue(a1p, b1);
+    let h2p = hue(a2p, b2);
+    let dlp = l2 - l1;
+    let dcp = c2p - c1p;
+    let dhp = if c1p == 0.0 || c2p == 0.0 {
+        0.0
+    } else {
+        let d = h2p - h1p;
+        if d.abs() <= 180.0 {
+            d
+        } else if d > 180.0 {
+            d - 360.0
+        } else {
+            d + 360.0
+        }
+    };
+    let dcap_h = 2.0 * (c1p * c2p).sqrt() * (dhp / 2.0 * deg).sin();
+    let lbarp = (l1 + l2) / 2.0;
+    let hbarp = if c1p == 0.0 || c2p == 0.0 {
+        h1p + h2p
+    } else if (h1p - h2p).abs() <= 180.0 {
+        (h1p + h2p) / 2.0
+    } else if h1p + h2p < 360.0 {
+        (h1p + h2p + 360.0) / 2.0
+    } else {
+        (h1p + h2p - 360.0) / 2.0
+    };
+    let t = 1.0 - 0.17 * ((hbarp - 30.0) * deg).cos()
+        + 0.24 * ((2.0 * hbarp) * deg).cos()
+        + 0.32 * ((3.0 * hbarp + 6.0) * deg).cos()
+        - 0.20 * ((4.0 * hbarp - 63.0) * deg).cos();
+    let sl = 1.0 + (0.015 * (lbarp - 50.0).powi(2)) / (20.0 + (lbarp - 50.0).powi(2)).sqrt();
+    let sc = 1.0 + 0.045 * cbarp;
+    let sh = 1.0 + 0.015 * cbarp * t;
+    let rc = (pow7(cbarp) / (pow7(cbarp) + pow7(25.0))).sqrt();
+    let dtheta = 60.0 * (-(((hbarp - 275.0) / 25.0).powi(2))).exp();
+    let rt = -2.0 * rc * (dtheta * deg).sin();
+    ((dlp / sl).powi(2)
+        + (dcp / sc).powi(2)
+        + (dcap_h / sh).powi(2)
+        + rt * (dcp / sc) * (dcap_h / sh))
+        .sqrt()
+}
+
+/// Perceptual color difference ΔE00 (CIEDE2000) between two RGB colors — unlike
+/// color_distance (plain RGB-space manhattan/euclidean), this converts both to
+/// CIELAB (D65) and applies the CIEDE2000 formula, so the number tracks how
+/// different the colors *look*. ΔE ≈ 1 is the just-noticeable threshold; 0 is
+/// identical, ~100 spans black↔white. opts: `a`, `b` (each `[r,g,b]` or `{r,g,b}`).
+/// Returns `{delta_e, lab_a:{l,a,b}, lab_b:{l,a,b}}`. Pure.
+fn op_delta_e(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let (l1, a1, b1) = rgb_to_lab(ar, ag, ab);
+    let (l2, a2, b2) = rgb_to_lab(br, bg, bb);
+    let de = ciede2000(l1, a1, b1, l2, a2, b2);
+    let r4 = |x: f64| (x * 10000.0).round() / 10000.0;
+    Ok(json!({
+        "delta_e": r4(de),
+        "lab_a": {"l": r4(l1), "a": r4(a1), "b": r4(b1)},
+        "lab_b": {"l": r4(l2), "a": r4(a2), "b": r4(b2)},
+    }))
+}
+
 /// Blend two RGB colors `a` and `b` (each `[r,g,b]` or `{r,g,b}`) by `weight` —
 /// the fraction of `b` in the result (default 0.5, an even mix; clamped to
 /// [0,1]). Components are linearly interpolated in sRGB (a simple, gamma-naive
@@ -1058,6 +1178,11 @@ pub extern "C" fn gui__color_distance(args: *const c_char) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn gui__delta_e(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_delta_e)
+}
+
+#[no_mangle]
 pub extern "C" fn gui__mix(args: *const c_char) -> *const c_char {
     ffi_call(args, op_mix)
 }
@@ -1381,6 +1506,67 @@ mod tests {
         assert_eq!(v["euclidean"], json!(5.0), "3-4-5 triangle");
         let same = op_color_distance(json!({"a": [10, 20, 30], "b": [10, 20, 30]})).unwrap();
         assert_eq!(same["manhattan"], json!(0));
+    }
+
+    #[test]
+    fn ciede2000_matches_published_reference_pairs() {
+        // Sharma et al. (2005) test data, row 1.
+        assert!(
+            (ciede2000(50.0, 2.6772, -79.7751, 50.0, 0.0, -82.7485) - 2.0425).abs() < 1e-3,
+            "Sharma row 1 = 2.0425"
+        );
+        // A blue-pair from the same dataset.
+        assert!(
+            (ciede2000(50.0, 3.1571, -77.2803, 50.0, 0.0, -82.7485) - 2.8615).abs() < 1e-3,
+            "Sharma row 2 = 2.8615"
+        );
+        // michel-leonard reference pair (Sharma variant 2.91460).
+        assert!(
+            (ciede2000(93.1, 39.1, -1.8, 93.6, 33.8, 1.8) - 2.9146).abs() < 1e-3,
+            "reference pair = 2.9146"
+        );
+        // Identical colors → 0; a pure-lightness gray pair has no chroma/hue term.
+        assert!(ciede2000(50.0, 0.0, 0.0, 50.0, 0.0, 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rgb_to_lab_matches_reference_colors() {
+        let (lw, aw, bw) = rgb_to_lab(255, 255, 255);
+        assert!(
+            (lw - 100.0).abs() < 1e-3 && aw.abs() < 0.02 && bw.abs() < 0.02,
+            "white → L100"
+        );
+        let (lk, ak, bk) = rgb_to_lab(0, 0, 0);
+        assert!(
+            lk.abs() < 1e-9 && ak.abs() < 1e-9 && bk.abs() < 1e-9,
+            "black → 0,0,0"
+        );
+        // sRGB pure red: L*53.2408 a*80.0925 b*67.2032 (standard D65 reference).
+        let (lr, ar, br) = rgb_to_lab(255, 0, 0);
+        assert!((lr - 53.2408).abs() < 0.05, "red L");
+        assert!((ar - 80.0925).abs() < 0.05, "red a");
+        assert!((br - 67.2032).abs() < 0.05, "red b");
+    }
+
+    #[test]
+    fn delta_e_perceptual_difference_end_to_end() {
+        let de = |a: Value, b: Value| {
+            op_delta_e(json!({ "a": a, "b": b })).unwrap()["delta_e"]
+                .as_f64()
+                .unwrap()
+        };
+        // Identical colors → 0.
+        assert_eq!(de(json!([10, 20, 30]), json!([10, 20, 30])), 0.0);
+        // Black ↔ white spans ~100 (pure lightness, no chroma).
+        assert!((de(json!([0, 0, 0]), json!([255, 255, 255])) - 100.0).abs() < 0.01);
+        // The op also surfaces the CIELAB coordinates it computed.
+        let full = op_delta_e(json!({"a": [255, 0, 0], "b": [0, 0, 255]})).unwrap();
+        assert!((full["lab_a"]["l"].as_f64().unwrap() - 53.2408).abs() < 0.05);
+        assert!(
+            full["delta_e"].as_f64().unwrap() > 50.0,
+            "red vs blue is a large ΔE"
+        );
+        assert!(op_delta_e(json!({"a": [0, 0, 0]})).is_err());
     }
 
     #[test]

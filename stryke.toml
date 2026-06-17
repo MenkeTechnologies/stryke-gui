@@ -1,6 +1,6 @@
 [package]
 name = "stryke-gui"
-version = "0.18.0"
+version = "0.19.0"
 description = "GUI automation (mouse, keyboard, screen, pixel, screenshot) for stryke. cdylib package — loaded in-process via dlopen on first `use GUI`. No subprocess fork per call; the Enigo input handle persists across calls."
 authors = ["MenkeTechnologies"]
 license = "MIT"
@@ -38,6 +38,7 @@ exports = [
     "gui__parse_color",
     "gui__format_color",
     "gui__color_distance",
+    "gui__delta_e",
     "gui__mix",
     "gui__rotate_hue",
     "gui__adjust_lightness",

@@ -188,6 +188,7 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::parse_color("#ff8800")` | `{ r, g, b, hex }` — accepts `#rgb`, `#rrggbb`, `rgb(r,g,b)` |
 | `GUI::format_color($color, %opts)` | `{ r, g, b, format, formatted }` — inverse of `parse_color`; `format` `hex` (default) or `rgb`; clamps 0-255 |
 | `GUI::color_distance($a, $b)` | `{ manhattan, euclidean }` — for pixel-match tolerance; each color `[r,g,b]` or `{r,g,b}` |
+| `GUI::delta_e($a, $b)` | `{ delta_e, lab_a, lab_b }` — perceptual color difference ΔE00 (CIEDE2000) via CIELAB/D65; tracks how different the colors *look* (≈1 just-noticeable, ~100 black↔white), unlike RGB `color_distance` |
 | `GUI::mix($a, $b, $weight?)` | `{ r, g, b, hex }` — blend two colors by weight (fraction of `b`, default 0.5); linear sRGB; for tints/shades/gradients |
 | `GUI::rotate_hue($color, $degrees)` | `{ r, g, b, hex, h }` — rotate hue in HSL (complement 180°, triadic ±120°, analogous ±30°); wraps mod 360; grey unchanged |
 | `GUI::adjust_lightness($color, $delta)` | `{ r, g, b, hex, l }` — nudge HSL lightness by `$delta` points (lighten >0, darken <0); keeps hue/saturation; clamps `l` to [0,100] |

@@ -1380,6 +1380,235 @@ fn op_gradient(v: Value) -> Result<Value> {
     Ok(json!({"stops": stops, "steps": steps}))
 }
 
+/// Convert an 0-255 sRGB color to CIE XYZ (D65) — the linear tristimulus space
+/// every other colorimetric space (`Lab`, `Oklab`) bridges through. Linear sRGB →
+/// XYZ uses the standard sRGB/D65 matrix (Bruce Lindbloom), the same matrix
+/// `rgb_to_lab` applies internally before the Lab nonlinearity. Returns the
+/// nominally-[0,1] tristimulus values (white ≈ X 0.95047, Y 1, Z 1.08883).
+fn rgb_to_xyz(r: i64, g: i64, b: i64) -> (f64, f64, f64) {
+    let (rl, gl, bl) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+    (
+        0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl,
+        0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl,
+        0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl,
+    )
+}
+
+/// Convert CIE XYZ (D65) back to 0-255 sRGB — the inverse of `rgb_to_xyz` via the
+/// Lindbloom inverse matrix plus sRGB companding. Out-of-gamut channels clamp.
+fn xyz_to_rgb(x: f64, y: f64, z: f64) -> (u8, u8, u8) {
+    let rl = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+    let gl = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+    let bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+    (linear_to_srgb(rl), linear_to_srgb(gl), linear_to_srgb(bl))
+}
+
+/// Convert an 0-255 sRGB color to Oklab (Björn Ottosson, 2020; CSS Color 4 §9) —
+/// a perceptually-uniform space like CIELAB but with markedly better hue
+/// linearity and lightness prediction. Linear sRGB → LMS via Ottosson's M1,
+/// cube-root nonlinearity, then LMS' → Lab via M2. `L` is in [0,1]; `a`/`b` are
+/// roughly ±0.4 (green↔red / blue↔yellow opponent axes).
+fn rgb_to_oklab(r: i64, g: i64, b: i64) -> (f64, f64, f64) {
+    let (rl, gl, bl) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+    let l = 0.4122214708 * rl + 0.5363325363 * gl + 0.0514459929 * bl;
+    let m = 0.2119034982 * rl + 0.6806995451 * gl + 0.1073969566 * bl;
+    let s = 0.0883024619 * rl + 0.2817188376 * gl + 0.6299787005 * bl;
+    let (l_, m_, s_) = (l.cbrt(), m.cbrt(), s.cbrt());
+    (
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    )
+}
+
+/// Convert an Oklab color back to 0-255 sRGB — the inverse of `rgb_to_oklab` (the
+/// M2/M1 inverse matrices plus the cube). Out-of-gamut channels clamp.
+fn oklab_to_rgb(l: f64, a: f64, b: f64) -> (u8, u8, u8) {
+    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+    let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+    let (lc, mc, sc) = (l_ * l_ * l_, m_ * m_ * m_, s_ * s_ * s_);
+    let rl = 4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc;
+    let gl = -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc;
+    let bl = -0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc;
+    (linear_to_srgb(rl), linear_to_srgb(gl), linear_to_srgb(bl))
+}
+
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to CIE XYZ
+/// (D65) — the linear tristimulus space `to_lab` and `to_oklab` bridge through,
+/// exposed directly. opts: `color`/`a`. Returns `{x, y, z}` (nominally [0,1];
+/// white ≈ 0.95047, 1, 1.08883). The inverse is `from_xyz`. Pure.
+fn op_to_xyz(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let (x, y, z) = rgb_to_xyz(r, g, b);
+    Ok(json!({ "x": x, "y": y, "z": z }))
+}
+
+/// Convert a CIE XYZ (D65) color back to RGB — the inverse of `to_xyz`. opts: `x`,
+/// `y`, `z` (nominally [0,1]). Out-of-gamut results clamp per channel. Returns
+/// `{r, g, b, hex}`. Pure.
+fn op_from_xyz(v: Value) -> Result<Value> {
+    let x = v.get("x").and_then(Value::as_f64).unwrap_or(0.0);
+    let y = v.get("y").and_then(Value::as_f64).unwrap_or(0.0);
+    let z = v.get("z").and_then(Value::as_f64).unwrap_or(0.0);
+    let (r, g, b) = xyz_to_rgb(x, y, z);
+    Ok(rgb_out(r, g, b))
+}
+
+/// Convert an RGB color (`[r,g,b]` or `{r,g,b}`, components 0-255) to Oklab — the
+/// modern perceptually-uniform space (Ottosson 2020, CSS Color 4) with better hue
+/// linearity than CIELAB. opts: `color`/`a`. Returns `{l, a, b}` (`l` in [0,1],
+/// `a`/`b` ≈ ±0.4). The inverse is `from_oklab`. Pure.
+fn op_to_oklab(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let (l, a, bb) = rgb_to_oklab(r, g, b);
+    Ok(json!({ "l": l, "a": a, "b": bb }))
+}
+
+/// Convert an Oklab color back to RGB — the inverse of `to_oklab`. opts: `l`
+/// ([0,1]), `a`, `b` (≈ ±0.4). Out-of-gamut results clamp per channel. Returns
+/// `{r, g, b, hex}`. Pure.
+fn op_from_oklab(v: Value) -> Result<Value> {
+    let l = v.get("l").and_then(Value::as_f64).unwrap_or(0.0);
+    let a = v.get("a").and_then(Value::as_f64).unwrap_or(0.0);
+    let b = v.get("b").and_then(Value::as_f64).unwrap_or(0.0);
+    let (r, g, bb) = oklab_to_rgb(l, a, b);
+    Ok(rgb_out(r, g, bb))
+}
+
+/// Blend two RGB colors in Oklab space by `weight` (the fraction of `b`, default
+/// 0.5, clamped to [0,1]) — the most perceptually-even of the three blends
+/// (`mix` in sRGB, `blend_lab` in CIELAB, this in Oklab). Each color is converted
+/// to Oklab, the L/a/b coordinates linearly interpolated, and the result
+/// converted back. opts: `a`, `b` (each `[r,g,b]` or `{r,g,b}`), `weight`.
+/// `weight` 0 returns `a`, 1 returns `b`. Returns `{r, g, b, hex}`. Pure.
+fn op_blend_oklab(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let w = v
+        .get("weight")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
+    let (l1, a1, b1) = rgb_to_oklab(ar, ag, ab);
+    let (l2, a2, b2) = rgb_to_oklab(br, bg, bb);
+    let lerp = |x: f64, y: f64| x * (1.0 - w) + y * w;
+    let (r, g, b) = oklab_to_rgb(lerp(l1, l2), lerp(a1, a2), lerp(b1, b2));
+    Ok(rgb_out(r, g, b))
+}
+
+/// Generate a colour scheme from a base `color` by rotating its hue in HSL — the
+/// composite designers reach for (where `rotate_hue` is the single-step
+/// primitive). opts: `color` (any form `parse_color`/`rgb_of` accepts) and
+/// `scheme`: `complementary` (base + 180°), `triadic` (±120°),
+/// `analogous` (±30°), `split` (split-complementary, 150°/210°),
+/// `tetradic` (rectangle, +60°/+180°/+240°), or `square` (+90°/+180°/+270°). The
+/// base colour is always the first entry; a grey (saturation 0) yields copies of
+/// itself. Returns `{scheme, colors: [{r,g,b,hex}, ...]}`. Pure.
+fn op_scheme(v: Value) -> Result<Value> {
+    let color = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let scheme = v
+        .get("scheme")
+        .and_then(Value::as_str)
+        .unwrap_or("complementary");
+    let offsets: &[f64] = match scheme {
+        "complementary" | "complement" => &[0.0, 180.0],
+        "triadic" | "triad" => &[0.0, 120.0, 240.0],
+        "analogous" => &[0.0, 30.0, -30.0],
+        "split" | "split-complementary" => &[0.0, 150.0, 210.0],
+        "tetradic" | "rectangle" => &[0.0, 60.0, 180.0, 240.0],
+        "square" => &[0.0, 90.0, 180.0, 270.0],
+        other => {
+            return Err(anyhow::anyhow!(
+                "unknown scheme `{other}` (want complementary, triadic, analogous, split, tetradic, or square)"
+            ))
+        }
+    };
+    let colors: Vec<Value> = offsets
+        .iter()
+        .map(|&deg| {
+            let mut c = op_rotate_hue(json!({ "color": color, "degrees": deg }))?;
+            // `rotate_hue` adds an `h` field; drop it so each entry is the {r,g,b,hex} shape.
+            if let Some(obj) = c.as_object_mut() {
+                obj.remove("h");
+            }
+            Ok(c)
+        })
+        .collect::<Result<_>>()?;
+    Ok(json!({ "scheme": scheme, "colors": colors }))
+}
+
+/// CSS basic + extended named colors used by `name_color`: the 16 HTML 4.01
+/// names plus a few common CSS Color extras. Each is `(name, r, g, b)`. Kept
+/// compact and exact so the nearest-match is auditable.
+const NAMED_COLORS: &[(&str, u8, u8, u8)] = &[
+    ("black", 0, 0, 0),
+    ("white", 255, 255, 255),
+    ("red", 255, 0, 0),
+    ("lime", 0, 255, 0),
+    ("blue", 0, 0, 255),
+    ("yellow", 255, 255, 0),
+    ("cyan", 0, 255, 255),
+    ("magenta", 255, 0, 255),
+    ("silver", 192, 192, 192),
+    ("gray", 128, 128, 128),
+    ("maroon", 128, 0, 0),
+    ("olive", 128, 128, 0),
+    ("green", 0, 128, 0),
+    ("purple", 128, 0, 128),
+    ("teal", 0, 128, 128),
+    ("navy", 0, 0, 128),
+    ("orange", 255, 165, 0),
+    ("pink", 255, 192, 203),
+    ("brown", 165, 42, 42),
+    ("gold", 255, 215, 0),
+];
+
+/// Name the nearest CSS named color to an RGB `color` by perceptual distance —
+/// the human-readable label `parse_color` can't give (it only round-trips
+/// hex/`rgb()`). Each candidate in `NAMED_COLORS` is compared by ΔE00 (CIEDE2000,
+/// the same metric `delta_e` exposes), so the match tracks how the colors *look*.
+/// opts: `color`/`a` (any `[r,g,b]` or `{r,g,b}`). Returns `{name, delta_e,
+/// r, g, b, hex}` for the closest name (`delta_e` 0 = an exact named color). Pure.
+fn op_name_color(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let (l1, a1, b1) = rgb_to_lab(r, g, b);
+    let mut best: Option<(&str, u8, u8, u8, f64)> = None;
+    for &(name, nr, ng, nb) in NAMED_COLORS {
+        let (l2, a2, b2) = rgb_to_lab(nr as i64, ng as i64, nb as i64);
+        let de = ciede2000(l1, a1, b1, l2, a2, b2);
+        if best.is_none_or(|(.., bd)| de < bd) {
+            best = Some((name, nr, ng, nb, de));
+        }
+    }
+    let (name, nr, ng, nb, de) = best.expect("NAMED_COLORS is non-empty");
+    let de = (de * 10000.0).round() / 10000.0;
+    Ok(json!({
+        "name": name,
+        "delta_e": de,
+        "r": nr,
+        "g": ng,
+        "b": nb,
+        "hex": format!("#{nr:02x}{ng:02x}{nb:02x}"),
+    }))
+}
+
 #[no_mangle]
 pub extern "C" fn gui__invert(args: *const c_char) -> *const c_char {
     ffi_call(args, op_invert)
@@ -1533,6 +1762,41 @@ pub extern "C" fn gui__to_hsl(args: *const c_char) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn gui__from_hsl(args: *const c_char) -> *const c_char {
     ffi_call(args, op_from_hsl)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_xyz(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_xyz)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_xyz(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_xyz)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_oklab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_oklab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_oklab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_oklab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__blend_oklab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_blend_oklab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__scheme(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_scheme)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__name_color(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_name_color)
 }
 
 #[cfg(test)]
@@ -2364,6 +2628,201 @@ mod tests {
             json!("#00ffff"),
             "c clamps to 100 (→0 red), m/y stay 0 (→cyan)"
         );
+    }
+
+    #[test]
+    fn xyz_matches_reference_and_round_trips() {
+        let approx = |v: &Value, key: &str, want: f64| {
+            let got = v[key].as_f64().unwrap();
+            assert!((got - want).abs() < 1e-4, "{key}: got {got}, want {want}");
+        };
+        // D65 white is the reference white point X 0.95047, Y 1, Z 1.08883.
+        let white = op_to_xyz(json!({"color": [255, 255, 255]})).unwrap();
+        approx(&white, "x", 0.95047);
+        approx(&white, "y", 1.0);
+        approx(&white, "z", 1.08883);
+        // Pure red is the first column of the sRGB→XYZ matrix.
+        let red = op_to_xyz(json!({"color": [255, 0, 0]})).unwrap();
+        approx(&red, "x", 0.4124564);
+        approx(&red, "y", 0.2126729);
+        approx(&red, "z", 0.0193339);
+        // Black is the origin.
+        let black = op_to_xyz(json!({"color": [0, 0, 0]})).unwrap();
+        approx(&black, "x", 0.0);
+        // from_xyz inverts to_xyz exactly for every reference color.
+        for rgb in [
+            [255, 0, 0],
+            [0, 0, 0],
+            [255, 255, 255],
+            [18, 52, 86],
+            [200, 100, 50],
+            [12, 200, 90],
+        ] {
+            let xyz = op_to_xyz(json!({ "color": rgb })).unwrap();
+            let back = op_from_xyz(json!({"x": xyz["x"], "y": xyz["y"], "z": xyz["z"]})).unwrap();
+            assert_eq!(
+                [
+                    back["r"].as_i64().unwrap(),
+                    back["g"].as_i64().unwrap(),
+                    back["b"].as_i64().unwrap()
+                ],
+                rgb,
+                "round-trips for {rgb:?}"
+            );
+        }
+        assert!(op_to_xyz(json!({})).is_err());
+    }
+
+    #[test]
+    fn oklab_matches_reference_and_round_trips() {
+        let approx = |v: &Value, key: &str, want: f64| {
+            let got = v[key].as_f64().unwrap();
+            assert!((got - want).abs() < 1e-4, "{key}: got {got}, want {want}");
+        };
+        // White → L1 with near-zero opponent axes (Ottosson reference).
+        let white = op_to_oklab(json!({"color": [255, 255, 255]})).unwrap();
+        approx(&white, "l", 1.0);
+        assert!(white["a"].as_f64().unwrap().abs() < 1e-4, "white a≈0");
+        assert!(white["b"].as_f64().unwrap().abs() < 1e-4, "white b≈0");
+        // sRGB pure red: L0.6280 a0.2249 b0.1258 (Ottosson 2020 reference).
+        let red = op_to_oklab(json!({"color": [255, 0, 0]})).unwrap();
+        approx(&red, "l", 0.6280);
+        approx(&red, "a", 0.2249);
+        approx(&red, "b", 0.1258);
+        // Black is the origin.
+        let black = op_to_oklab(json!({"color": [0, 0, 0]})).unwrap();
+        approx(&black, "l", 0.0);
+        // from_oklab inverts to_oklab exactly for every reference color.
+        for rgb in [
+            [255, 0, 0],
+            [0, 0, 0],
+            [255, 255, 255],
+            [18, 52, 86],
+            [0, 128, 0],
+            [12, 200, 90],
+        ] {
+            let ok = op_to_oklab(json!({ "color": rgb })).unwrap();
+            let bk = op_from_oklab(json!({"l": ok["l"], "a": ok["a"], "b": ok["b"]})).unwrap();
+            assert_eq!(
+                [
+                    bk["r"].as_i64().unwrap(),
+                    bk["g"].as_i64().unwrap(),
+                    bk["b"].as_i64().unwrap()
+                ],
+                rgb,
+                "round-trips for {rgb:?}"
+            );
+        }
+        assert!(op_to_oklab(json!({})).is_err());
+    }
+
+    #[test]
+    fn blend_oklab_interpolates_in_oklab_space() {
+        // weight 0 returns a, 1 returns b (the endpoints are exact).
+        assert_eq!(
+            op_blend_oklab(json!({"a": [10, 20, 30], "b": [200, 100, 40], "weight": 0.0})).unwrap()
+                ["hex"],
+            json!("#0a141e")
+        );
+        assert_eq!(
+            op_blend_oklab(json!({"a": [10, 20, 30], "b": [200, 100, 40], "weight": 1.0})).unwrap()
+                ["hex"],
+            json!("#c86428")
+        );
+        // The even black↔white blend lands at the mid-Oklab-L gray (#636363,
+        // Oklab L 0.5), distinct from sRGB `mix` (#808080) — proving it
+        // interpolates in Oklab, not sRGB.
+        let g = op_blend_oklab(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap();
+        assert_eq!(g["hex"], json!("#636363"));
+        assert_ne!(
+            g["hex"],
+            op_mix(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap()["hex"]
+        );
+        // Out-of-range weight clamps; bad/missing color shapes error.
+        assert_eq!(
+            op_blend_oklab(json!({"a": [0, 0, 0], "b": [255, 255, 255], "weight": 9.0})).unwrap()
+                ["hex"],
+            json!("#ffffff")
+        );
+        assert!(op_blend_oklab(json!({"a": [1, 2], "b": [3, 4, 5]})).is_err());
+    }
+
+    #[test]
+    fn scheme_generates_hue_rotated_palettes() {
+        let hexes = |base: Value, scheme: &str| -> Vec<String> {
+            op_scheme(json!({ "color": base, "scheme": scheme })).unwrap()["colors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["hex"].as_str().unwrap().to_string())
+                .collect()
+        };
+        // The base color is always first.
+        assert_eq!(hexes(json!([255, 0, 0]), "complementary")[0], "#ff0000");
+        // Complementary of red is cyan (180°).
+        assert_eq!(
+            hexes(json!([255, 0, 0]), "complementary"),
+            ["#ff0000", "#00ffff"]
+        );
+        // Triadic of red is red/green/blue (0/120/240°).
+        assert_eq!(
+            hexes(json!([255, 0, 0]), "triadic"),
+            ["#ff0000", "#00ff00", "#0000ff"]
+        );
+        // Square adds 90/180/270°: red → chartreuse-ish, cyan, blue-violet.
+        assert_eq!(hexes(json!([255, 0, 0]), "square").len(), 4);
+        assert_eq!(hexes(json!([255, 0, 0]), "square")[2], "#00ffff");
+        // Entry count matches the scheme arity.
+        assert_eq!(hexes(json!([255, 0, 0]), "analogous").len(), 3);
+        assert_eq!(hexes(json!([255, 0, 0]), "tetradic").len(), 4);
+        // Each entry is the {r,g,b,hex} shape with the `h` field dropped.
+        let first =
+            &op_scheme(json!({"color": [255, 0, 0], "scheme": "triadic"})).unwrap()["colors"][0];
+        assert!(first.get("hex").is_some());
+        assert!(
+            first.get("h").is_none(),
+            "the rotate_hue `h` field is stripped"
+        );
+        // A grey has no hue to rotate, so every entry is the same grey.
+        assert_eq!(
+            hexes(json!([128, 128, 128]), "triadic"),
+            ["#808080", "#808080", "#808080"]
+        );
+        // Unknown scheme / missing color errors.
+        assert!(op_scheme(json!({"color": [255, 0, 0], "scheme": "spiral"})).is_err());
+        assert!(op_scheme(json!({"scheme": "triadic"})).is_err());
+    }
+
+    #[test]
+    fn name_color_finds_nearest_css_name() {
+        // An exact named color matches itself with ΔE 0.
+        let red = op_name_color(json!({"color": [255, 0, 0]})).unwrap();
+        assert_eq!(red["name"], json!("red"));
+        assert_eq!(red["delta_e"], json!(0.0));
+        assert_eq!(red["hex"], json!("#ff0000"));
+        // Endpoints land on black / white.
+        assert_eq!(
+            op_name_color(json!({"color": [0, 0, 0]})).unwrap()["name"],
+            json!("black")
+        );
+        assert_eq!(
+            op_name_color(json!({"color": [255, 255, 255]})).unwrap()["name"],
+            json!("white")
+        );
+        // A near-orange snaps to "orange" (a nonzero, small ΔE).
+        let near = op_name_color(json!({"color": [250, 160, 5]})).unwrap();
+        assert_eq!(near["name"], json!("orange"));
+        assert!(
+            near["delta_e"].as_f64().unwrap() > 0.0,
+            "an inexact color has ΔE > 0"
+        );
+        // {r,g,b} shape accepted; a mid teal-ish color resolves to "teal".
+        assert_eq!(
+            op_name_color(json!({"color": {"r": 0, "g": 130, "b": 130}})).unwrap()["name"],
+            json!("teal")
+        );
+        // Missing color errors.
+        assert!(op_name_color(json!({})).is_err());
     }
 
     #[test]

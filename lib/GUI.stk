@@ -516,3 +516,58 @@ fn GUI::blend_lab ($a, $b, $weight = 0.5) {
 fn GUI::gradient ($a, $b, $steps = 5) {
     GUI::_decode("gradient", gui__gradient(to_json({ a => $a, b => $b, steps => $steps })))
 }
+
+## Convert an RGB $color ([r,g,b] or { r, g, b }, 0-255) to CIE XYZ (D65) — the
+## linear tristimulus space to_lab/to_oklab bridge through, exposed directly.
+## Returns { x, y, z } (nominally [0,1]; white ≈ 0.95047, 1, 1.08883). Inverse:
+## from_xyz.
+fn GUI::to_xyz ($color) {
+    GUI::_decode("to_xyz", gui__to_xyz(to_json({ color => $color })))
+}
+
+## Convert a CIE XYZ (D65) color back to RGB — inverse of to_xyz. $x, $y, $z are
+## nominally [0,1]; out-of-gamut results clamp per channel. Returns a hashref
+## { r, g, b, hex }.
+fn GUI::from_xyz ($x, $y, $z) {
+    GUI::_decode("from_xyz", gui__from_xyz(to_json({ x => $x, y => $y, z => $z })))
+}
+
+## Convert an RGB $color ([r,g,b] or { r, g, b }, 0-255) to Oklab (Ottosson 2020,
+## CSS Color 4) — the modern perceptually-uniform space with better hue linearity
+## than CIELAB. Returns { l, a, b } (l in [0,1], a/b ≈ ±0.4). Inverse: from_oklab.
+fn GUI::to_oklab ($color) {
+    GUI::_decode("to_oklab", gui__to_oklab(to_json({ color => $color })))
+}
+
+## Convert an Oklab color back to RGB — inverse of to_oklab. $l in [0,1], $a and
+## $b ≈ ±0.4; out-of-gamut results clamp per channel. Returns a hashref
+## { r, g, b, hex }.
+fn GUI::from_oklab ($l, $a, $b) {
+    GUI::_decode("from_oklab", gui__from_oklab(to_json({ l => $l, a => $a, b => $b })))
+}
+
+## Blend two RGB colors $a and $b (each [r,g,b] or { r, g, b }) in Oklab space by
+## $weight (fraction of $b, default 0.5, clamped 0-1) — the most perceptually-even
+## blend (mix in sRGB, blend_lab in CIELAB, this in Oklab). $weight 0 → $a, 1 →
+## $b. Returns { r, g, b, hex }.
+fn GUI::blend_oklab ($a, $b, $weight = 0.5) {
+    GUI::_decode("blend_oklab", gui__blend_oklab(to_json({ a => $a, b => $b, weight => $weight })))
+}
+
+## Generate a colour scheme from a base $color by rotating its hue in HSL — the
+## composite over rotate_hue. $scheme is one of "complementary" (base + 180°),
+## "triadic" (±120°), "analogous" (±30°), "split" (split-complementary 150/210°),
+## "tetradic" (rectangle +60/180/240°), or "square" (+90/180/270°). The base is
+## always first; a grey (saturation 0) yields copies of itself. Returns
+## { scheme, colors => [{ r, g, b, hex }, ...] }.
+fn GUI::scheme ($color, $scheme = "complementary") {
+    GUI::_decode("scheme", gui__scheme(to_json({ color => $color, scheme => $scheme })))
+}
+
+## Name the nearest CSS named color to an RGB $color ([r,g,b] or { r, g, b }) by
+## perceptual distance (ΔE00) — the human-readable label parse_color can't give
+## (it only round-trips hex/rgb()). Returns { name, delta_e, r, g, b, hex } for
+## the closest name (delta_e 0 = an exact named color).
+fn GUI::name_color ($color) {
+    GUI::_decode("name_color", gui__name_color(to_json({ color => $color })))
+}

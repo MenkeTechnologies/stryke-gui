@@ -268,4 +268,56 @@ val $g5 = GUI::gradient([0, 0, 0], [255, 255, 255], 5)
 assert_eq scalar(@{ $g5->{stops} }), 5, "gradient: 5 stops"
 assert_eq $g5->{stops}[2]{r}, 128, "gradient: middle stop is the midpoint gray"
 
+# to_xyz / from_xyz: CIE XYZ (D65) tristimulus and its inverse.
+val $xw = GUI::to_xyz([255, 255, 255])
+assert_ok $xw->{x} > 0.9504 && $xw->{x} < 0.9506, "to_xyz: white X ≈ 0.95047"
+assert_ok $xw->{y} > 0.9999 && $xw->{y} < 1.0001, "to_xyz: white Y ≈ 1"
+assert_ok $xw->{z} > 1.0887 && $xw->{z} < 1.0889, "to_xyz: white Z ≈ 1.08883"
+# Round-trip: RGB → to_xyz → from_xyz reproduces the original.
+val $xb = GUI::to_xyz([18, 52, 86])
+val $xrt = GUI::from_xyz($xb->{x}, $xb->{y}, $xb->{z})
+assert_eq $xrt->{r}, 18, "from_xyz round-trips r"
+assert_eq $xrt->{g}, 52, "from_xyz round-trips g"
+assert_eq $xrt->{b}, 86, "from_xyz round-trips b"
+
+# to_oklab / from_oklab: Oklab perceptual space (Ottosson 2020) and its inverse.
+val $ow = GUI::to_oklab([255, 255, 255])
+assert_ok $ow->{l} > 0.9998 && $ow->{l} < 1.0001, "to_oklab: white L ≈ 1"
+val $ored = GUI::to_oklab([255, 0, 0])
+assert_ok $ored->{l} > 0.627 && $ored->{l} < 0.629, "to_oklab: red L ≈ 0.628"
+assert_ok $ored->{a} > 0.224 && $ored->{a} < 0.226, "to_oklab: red a ≈ 0.225"
+# Round-trip: RGB → to_oklab → from_oklab reproduces the original.
+val $orb = GUI::to_oklab([200, 100, 50])
+val $ort = GUI::from_oklab($orb->{l}, $orb->{a}, $orb->{b})
+assert_eq $ort->{r}, 200, "from_oklab round-trips r"
+assert_eq $ort->{g}, 100, "from_oklab round-trips g"
+assert_eq $ort->{b}, 50,  "from_oklab round-trips b"
+
+# blend_oklab: perceptual (Oklab) blend, distinct from both mix and blend_lab.
+assert_eq GUI::blend_oklab([10, 20, 30], [200, 100, 40], 0)->{hex}, "#0a141e", "blend_oklab: weight 0 → a"
+assert_eq GUI::blend_oklab([10, 20, 30], [200, 100, 40], 1)->{hex}, "#c86428", "blend_oklab: weight 1 → b"
+# The even black↔white blend lands at the mid-Oklab-L gray #636363, not sRGB's #808080.
+assert_eq GUI::blend_oklab([0, 0, 0], [255, 255, 255])->{hex}, "#636363", "blend_oklab: even mid is Oklab-L gray"
+
+# scheme: hue-rotated colour palettes (composite over rotate_hue).
+val $comp = GUI::scheme([255, 0, 0], "complementary")
+assert_eq scalar(@{ $comp->{colors} }), 2, "scheme: complementary has 2 colors"
+assert_eq $comp->{colors}[0]{hex}, "#ff0000", "scheme: base color is first"
+assert_eq $comp->{colors}[1]{hex}, "#00ffff", "scheme: complement of red is cyan"
+val $tri = GUI::scheme([255, 0, 0], "triadic")
+assert_eq scalar(@{ $tri->{colors} }), 3, "scheme: triadic has 3 colors"
+assert_eq $tri->{colors}[1]{hex}, "#00ff00", "scheme: triadic +120 → green"
+assert_eq $tri->{colors}[2]{hex}, "#0000ff", "scheme: triadic +240 → blue"
+assert_eq scalar(@{ GUI::scheme([255, 0, 0], "square")->{colors} }), 4, "scheme: square has 4 colors"
+assert_dies fn { GUI::scheme([255, 0, 0], "spiral") }, "scheme: rejects an unknown scheme"
+
+# name_color: nearest CSS named color by perceptual distance (ΔE00).
+val $nred = GUI::name_color([255, 0, 0])
+assert_eq $nred->{name}, "red",   "name_color: exact red is 'red'"
+assert_eq $nred->{delta_e}, 0,    "name_color: exact match has ΔE 0"
+assert_eq GUI::name_color([0, 0, 0])->{name}, "black", "name_color: black"
+val $nor = GUI::name_color([250, 160, 5])
+assert_eq $nor->{name}, "orange", "name_color: near-orange snaps to 'orange'"
+assert_gt $nor->{delta_e}, 0,     "name_color: inexact color has ΔE > 0"
+
 test_run

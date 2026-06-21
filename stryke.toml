@@ -64,6 +64,13 @@ exports = [
     "gui__from_lab",
     "gui__blend_lab",
     "gui__gradient",
+    "gui__to_xyz",
+    "gui__from_xyz",
+    "gui__to_oklab",
+    "gui__from_oklab",
+    "gui__blend_oklab",
+    "gui__scheme",
+    "gui__name_color",
 ]
 
 # Installable smoke-test launcher. `s pkg install -g` writes

@@ -214,6 +214,13 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::is_dark($color, $threshold=0.5)` | `{ dark, luminance, threshold, text }` — WCAG-luminance dark/light test; `text` is the suggested `"white"`/`"black"` foreground |
 | `GUI::mix($a, $b, $weight?)` _(sRGB)_ vs `GUI::blend_lab($a, $b, $weight=0.5)` | `{ r, g, b, hex }` — `blend_lab` interpolates two colors in CIELAB (perceptual), the counterpart of sRGB `mix` |
 | `GUI::gradient($a, $b, $steps=5)` | `{ stops => [{ r, g, b, hex }, ...], steps }` — `$steps` evenly-spaced sRGB stops, endpoints inclusive ([2,256]) |
+| `GUI::to_xyz($color)` | `{ x, y, z }` — RGB → CIE XYZ (D65), the linear tristimulus space `to_lab`/`to_oklab` bridge through; white ≈ `0.95047, 1, 1.08883` |
+| `GUI::from_xyz($x, $y, $z)` | `{ r, g, b, hex }` — CIE XYZ → RGB; inverse of `to_xyz`, out-of-gamut clamps per channel |
+| `GUI::to_oklab($color)` | `{ l, a, b }` — RGB → Oklab (Ottosson 2020, CSS Color 4); perceptually-uniform with better hue linearity than CIELAB; l in [0,1], a/b ≈ ±0.4 |
+| `GUI::from_oklab($l, $a, $b)` | `{ r, g, b, hex }` — Oklab → RGB; inverse of `to_oklab`, out-of-gamut clamps per channel |
+| `GUI::blend_oklab($a, $b, $weight=0.5)` | `{ r, g, b, hex }` — blend two colors in Oklab (most perceptually-even; cf. sRGB `mix`, CIELAB `blend_lab`) |
+| `GUI::scheme($color, $scheme?)` | `{ scheme, colors => [{ r, g, b, hex }, ...] }` — hue-rotated palette: `complementary` (default), `triadic`, `analogous`, `split`, `tetradic`, `square`; base is first |
+| `GUI::name_color($color)` | `{ name, delta_e, r, g, b, hex }` — nearest CSS named color by ΔE00 (the label `parse_color` can't give); `delta_e` 0 = exact |
 
 ### Displays
 

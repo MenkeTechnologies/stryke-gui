@@ -197,4 +197,75 @@ assert_eq $crt->{r}, 64,  "from_cmyk round-trips r"
 assert_eq $crt->{g}, 128, "from_cmyk round-trips g"
 assert_eq $crt->{b}, 192, "from_cmyk round-trips b"
 
+# invert: RGB complement (255 - c per channel).
+assert_eq GUI::invert([255, 0, 0])->{hex}, "#00ffff", "invert: red → cyan"
+assert_eq GUI::invert([0, 0, 0])->{hex},   "#ffffff", "invert: black → white"
+# Inverting twice is the identity.
+val $iv = GUI::invert([10, 120, 230])
+assert_eq GUI::invert([$iv->{r}, $iv->{g}, $iv->{b}])->{hex}, "#0a78e6", "invert: twice is identity"
+
+# grayscale: Rec.709 luma weights * 255 (red 54, green 182, blue 18).
+assert_eq GUI::grayscale([255, 0, 0])->{gray}, 54,  "grayscale: red luma"
+assert_eq GUI::grayscale([0, 255, 0])->{gray}, 182, "grayscale: green luma"
+assert_eq GUI::grayscale([0, 0, 255])->{gray}, 18,  "grayscale: blue luma"
+assert_eq GUI::grayscale([255, 255, 255])->{hex}, "#ffffff", "grayscale: white stays white"
+
+# sepia: classic warm matrix (hand-computed reference values).
+assert_eq GUI::sepia([255, 255, 255])->{hex}, "#ffffef", "sepia: white clamps warm (b→239)"
+assert_eq GUI::sepia([0, 0, 0])->{hex},       "#000000", "sepia: black stays black"
+assert_eq GUI::sepia([255, 0, 0])->{r}, 100,  "sepia: red row R'"
+
+# posterize: quantize channels to even levels.
+assert_eq GUI::posterize([10, 130, 250], 2)->{hex}, "#00ffff", "posterize: 2 levels → 0/255 two-tone"
+assert_eq GUI::posterize([255, 255, 255], 7)->{hex}, "#ffffff", "posterize: endpoints always representable"
+assert_eq GUI::posterize([10, 10, 10], 1)->{levels}, 2, "posterize: levels<2 clamps to 2"
+
+# temperature: warm/cool white-balance nudge.
+val $warm = GUI::temperature([100, 120, 140], 40)
+assert_eq $warm->{r}, 140, "temperature: +amount adds to red"
+assert_eq $warm->{b}, 100, "temperature: +amount subtracts from blue"
+assert_eq $warm->{g}, 120, "temperature: green untouched"
+assert_eq GUI::temperature([250, 0, 5], 100)->{r}, 255, "temperature: clamps at 255"
+
+# alpha_over: source-over compositing.
+assert_eq GUI::alpha_over([255, 0, 0], [0, 0, 255], 1)->{hex}, "#ff0000", "alpha_over: alpha 1 → fg"
+assert_eq GUI::alpha_over([255, 0, 0], [0, 0, 255], 0)->{hex}, "#0000ff", "alpha_over: alpha 0 → bg"
+assert_eq GUI::alpha_over([0, 0, 0], [255, 255, 255], 0.5)->{hex}, "#808080", "alpha_over: alpha 0.5 midpoint"
+
+# is_dark: WCAG luminance threshold + suggested text color.
+val $blk = GUI::is_dark([0, 0, 0])
+assert_ok $blk->{dark},               "is_dark: black is dark"
+assert_eq $blk->{text}, "white",      "is_dark: dark background suggests white text"
+val $wht = GUI::is_dark([255, 255, 255])
+assert_eq $wht->{dark}, 0,            "is_dark: white is not dark"
+assert_eq $wht->{text}, "black",      "is_dark: light background suggests black text"
+
+# to_lab / from_lab: CIELAB (D65) and its inverse.
+val $lred = GUI::to_lab([255, 0, 0])
+assert_gt $lred->{l}, 53.1, "to_lab: red L* ~53.24"
+assert_lt $lred->{l}, 53.3, "to_lab: red L* ~53.24"
+assert_eq GUI::from_lab(0, 0, 0)->{hex},   "#000000", "from_lab: L0 → black"
+assert_eq GUI::from_lab(100, 0, 0)->{hex}, "#ffffff", "from_lab: L100 → white"
+# round-trip: RGB → to_lab → from_lab reproduces the original.
+val $lb = GUI::to_lab([18, 52, 86])
+val $lrt = GUI::from_lab($lb->{l}, $lb->{a}, $lb->{b})
+assert_eq $lrt->{r}, 18, "from_lab round-trips r"
+assert_eq $lrt->{g}, 52, "from_lab round-trips g"
+assert_eq $lrt->{b}, 86, "from_lab round-trips b"
+
+# blend_lab: perceptual (CIELAB) blend, distinct from sRGB mix.
+assert_eq GUI::blend_lab([255, 0, 0], [0, 0, 255], 0)->{hex}, "#ff0000", "blend_lab: weight 0 → a"
+assert_eq GUI::blend_lab([255, 0, 0], [0, 0, 255], 1)->{hex}, "#0000ff", "blend_lab: weight 1 → b"
+# Lab midpoint of black↔white is darker than the sRGB midpoint #808080.
+assert_lt GUI::blend_lab([0, 0, 0], [255, 255, 255])->{r}, GUI::mix([0, 0, 0], [255, 255, 255])->{r}, "blend_lab: Lab midpoint darker than sRGB midpoint"
+
+# gradient: inclusive evenly-spaced stops.
+val $g2 = GUI::gradient([0, 0, 0], [255, 255, 255], 2)
+assert_eq scalar(@{ $g2->{stops} }), 2, "gradient: 2 stops"
+assert_eq $g2->{stops}[0]{hex}, "#000000", "gradient: first stop is a"
+assert_eq $g2->{stops}[1]{hex}, "#ffffff", "gradient: last stop is b"
+val $g5 = GUI::gradient([0, 0, 0], [255, 255, 255], 5)
+assert_eq scalar(@{ $g5->{stops} }), 5, "gradient: 5 stops"
+assert_eq $g5->{stops}[2]{r}, 128, "gradient: middle stop is the midpoint gray"
+
 test_run

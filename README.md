@@ -203,6 +203,17 @@ These touch no device — string/color parsing that runs headless:
 | `GUI::from_hwb($h, $w, $b)` | `{ r, g, b, hex }` — HWB → RGB; inverse of `to_hwb`; `w+b≥100` → gray `w/(w+b)`, else pure hue scaled by `1-w-b` plus `w` |
 | `GUI::to_cmyk($color)` | `{ c, m, y, k }` — RGB → CMYK (standard profile-free), percentages; pure black is k=100 |
 | `GUI::from_cmyk($c, $m, $y, $k)` | `{ r, g, b, hex }` — CMYK → RGB; inverse of `to_cmyk`, components clamp to 0-100 |
+| `GUI::to_lab($color)` | `{ l, a, b }` — RGB → CIELAB (D65), the perceptually-uniform space `delta_e` works in; l in [0,100], a/b ≈ ±128 |
+| `GUI::from_lab($l, $a, $b)` | `{ r, g, b, hex }` — CIELAB → RGB; inverse of `to_lab`, out-of-gamut clamps per channel |
+| `GUI::invert($color)` | `{ r, g, b, hex }` — RGB complement (`255 - c` per channel); the photographic negative |
+| `GUI::grayscale($color)` | `{ r, g, b, hex, gray }` — Rec. 709 luma gray (`0.2126R+0.7152G+0.0722B`) |
+| `GUI::sepia($color)` | `{ r, g, b, hex }` — classic sepia-tone color matrix (aged-photo warm tint), clamped |
+| `GUI::posterize($color, $levels=4)` | `{ r, g, b, hex, levels }` — quantize each channel to `$levels` even steps ([2,256]); `2` → 0/255 two-tone |
+| `GUI::temperature($color, $amount)` | `{ r, g, b, hex }` — warm (`+`, red up / blue down) or cool (`-`) white-balance nudge; green untouched, clamped |
+| `GUI::alpha_over($fg, $bg, $alpha=1)` | `{ r, g, b, hex }` — source-over composite `$fg*$alpha + $bg*(1-$alpha)`; `1` → fg, `0` → bg |
+| `GUI::is_dark($color, $threshold=0.5)` | `{ dark, luminance, threshold, text }` — WCAG-luminance dark/light test; `text` is the suggested `"white"`/`"black"` foreground |
+| `GUI::mix($a, $b, $weight?)` _(sRGB)_ vs `GUI::blend_lab($a, $b, $weight=0.5)` | `{ r, g, b, hex }` — `blend_lab` interpolates two colors in CIELAB (perceptual), the counterpart of sRGB `mix` |
+| `GUI::gradient($a, $b, $steps=5)` | `{ stops => [{ r, g, b, hex }, ...], steps }` — `$steps` evenly-spaced sRGB stops, endpoints inclusive ([2,256]) |
 
 ### Displays
 

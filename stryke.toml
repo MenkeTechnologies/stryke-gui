@@ -53,6 +53,17 @@ exports = [
     "gui__from_hsl",
     "gui__to_cmyk",
     "gui__from_cmyk",
+    "gui__invert",
+    "gui__grayscale",
+    "gui__sepia",
+    "gui__posterize",
+    "gui__temperature",
+    "gui__alpha_over",
+    "gui__is_dark",
+    "gui__to_lab",
+    "gui__from_lab",
+    "gui__blend_lab",
+    "gui__gradient",
 ]
 
 # Installable smoke-test launcher. `s pkg install -g` writes

@@ -1122,6 +1122,319 @@ fn op_from_cmyk(v: Value) -> Result<Value> {
     }))
 }
 
+/// Pack three rounded/clamped 0-255 channels into the `{r, g, b, hex}` JSON the
+/// color ops return. Centralizes the shape so every op emits an identical object.
+fn rgb_out(r: u8, g: u8, b: u8) -> Value {
+    json!({"r": r, "g": g, "b": b, "hex": format!("#{r:02x}{g:02x}{b:02x}")})
+}
+
+/// Round a float channel to the nearest 0-255 byte (clamping out-of-range).
+fn clamp_u8(x: f64) -> u8 {
+    x.round().clamp(0.0, 255.0) as u8
+}
+
+/// Invert an RGB color (`color`/`a` as `[r,g,b]` or `{r,g,b}`): each channel
+/// becomes `255 - c`, the photographic-negative / RGB-complement. opts: `color`.
+/// Returns `{r, g, b, hex}`. Pure.
+fn op_invert(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let inv = |c: i64| (255 - c.clamp(0, 255)) as u8;
+    Ok(rgb_out(inv(r), inv(g), inv(b)))
+}
+
+/// Convert an RGB color to grayscale using the Rec. 709 luma weights
+/// (`0.2126 R + 0.7152 G + 0.0722 B`) — the same channel weighting WCAG
+/// luminance uses, applied directly in sRGB (gamma-naive) so the gray reads as
+/// the perceived brightness. opts: `color`/`a`. Returns `{r, g, b, hex, gray}`
+/// where the three channels share the single 0-255 `gray` value. Pure.
+fn op_grayscale(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let y = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
+    let gray = clamp_u8(y);
+    let mut out = rgb_out(gray, gray, gray);
+    out["gray"] = json!(gray);
+    Ok(out)
+}
+
+/// Apply the classic sepia-tone color matrix to an RGB color — the warm
+/// brown-tinted look of aged photographs. Each output channel is a fixed linear
+/// combination of the input (R'=0.393R+0.769G+0.189B, G'=0.349R+0.686G+0.168B,
+/// B'=0.272R+0.534G+0.131B), clamped to 0-255. opts: `color`/`a`. Returns
+/// `{r, g, b, hex}`. Pure.
+fn op_sepia(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (ri, gi, bi) = rgb_of(src)?;
+    let (r, g, b) = (ri as f64, gi as f64, bi as f64);
+    let nr = 0.393 * r + 0.769 * g + 0.189 * b;
+    let ng = 0.349 * r + 0.686 * g + 0.168 * b;
+    let nb = 0.272 * r + 0.534 * g + 0.131 * b;
+    Ok(rgb_out(clamp_u8(nr), clamp_u8(ng), clamp_u8(nb)))
+}
+
+/// Quantize each channel of an RGB color to `levels` evenly-spaced steps — the
+/// poster / banding effect. With `levels` n (clamped to [2,256]), each channel
+/// snaps to the nearest of n values spread across 0-255 (so `levels=2` gives a
+/// pure 0/255 two-tone). opts: `color`/`a`, `levels` (default 4). Returns
+/// `{r, g, b, hex, levels}`. Pure.
+fn op_posterize(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let levels = v
+        .get("levels")
+        .and_then(Value::as_i64)
+        .unwrap_or(4)
+        .clamp(2, 256);
+    let step = (levels - 1) as f64;
+    let q = |c: i64| -> u8 {
+        let c = c.clamp(0, 255) as f64 / 255.0;
+        clamp_u8((c * step).round() / step * 255.0)
+    };
+    let mut out = rgb_out(q(r), q(g), q(b));
+    out["levels"] = json!(levels);
+    Ok(out)
+}
+
+/// Shift an RGB color's warmth by `amount` (or `delta`): a positive value warms
+/// it (adds to red, subtracts from blue), a negative value cools it (the
+/// reverse), with green untouched and every channel clamped to 0-255. A simple
+/// additive white-balance nudge. opts: `color`/`a`, `amount`. Returns
+/// `{r, g, b, hex}`. Pure.
+fn op_temperature(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let amount = v
+        .get("amount")
+        .or_else(|| v.get("delta"))
+        .and_then(Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("missing amount"))?;
+    let nr = clamp_u8(r as f64 + amount);
+    let nb = clamp_u8(b as f64 - amount);
+    Ok(rgb_out(nr, g.clamp(0, 255) as u8, nb))
+}
+
+/// Composite a foreground color over a background ("source-over"): each channel
+/// is `fg*alpha + bg*(1-alpha)`. opts: `fg` (or `a`), `bg` (or `b`) — each
+/// `[r,g,b]` or `{r,g,b}` — and `alpha` (0-1, default 1; clamped). `alpha` 1
+/// returns `fg`, 0 returns `bg`. The straight-alpha blend behind translucent
+/// overlays. Returns `{r, g, b, hex}`. Pure.
+fn op_alpha_over(v: Value) -> Result<Value> {
+    let fg = v.get("fg").or_else(|| v.get("a")).unwrap_or(&Value::Null);
+    let bg = v.get("bg").or_else(|| v.get("b")).unwrap_or(&Value::Null);
+    let (fr, fgn, fb) = rgb_of(fg)?;
+    let (br, bgn, bb) = rgb_of(bg)?;
+    let alpha = v
+        .get("alpha")
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let over = |f: i64, b: i64| clamp_u8(f as f64 * alpha + b as f64 * (1.0 - alpha));
+    Ok(rgb_out(over(fr, br), over(fgn, bgn), over(fb, bb)))
+}
+
+/// Whether an RGB color is "dark" by WCAG relative luminance — `true` when the
+/// luminance is below `threshold` (default 0.5). The common pick-a-text-color
+/// test: a dark background wants light text and vice versa. opts: `color`/`a`,
+/// `threshold` (0-1). Returns `{dark, luminance, threshold, text}` where `text`
+/// is the suggested `"white"`/`"black"` foreground. Pure.
+fn op_is_dark(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let threshold = v
+        .get("threshold")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
+    let lum = relative_luminance(r, g, b);
+    let dark = lum < threshold;
+    Ok(json!({
+        "dark": dark,
+        "luminance": lum,
+        "threshold": threshold,
+        "text": if dark { "white" } else { "black" },
+    }))
+}
+
+/// Convert an RGB color to CIELAB (D65) — the perceptually-uniform space the
+/// `delta_e` formula works in, exposed directly. opts: `color`/`a`. Returns
+/// `{l, a, b}` (`l` in [0,100], `a`/`b` roughly ±128). The inverse is
+/// `from_lab`. Pure.
+fn op_to_lab(v: Value) -> Result<Value> {
+    let src = v
+        .get("color")
+        .or_else(|| v.get("a"))
+        .unwrap_or(&Value::Null);
+    let (r, g, b) = rgb_of(src)?;
+    let (l, a, bb) = rgb_to_lab(r, g, b);
+    Ok(json!({"l": l, "a": a, "b": bb}))
+}
+
+/// Convert one 0-1 linear-light channel back to an 0-255 sRGB byte — the inverse
+/// of `srgb_to_linear`, per IEC 61966-2-1 (the 0.0031308 companding breakpoint).
+fn linear_to_srgb(c: f64) -> u8 {
+    let c = c.clamp(0.0, 1.0);
+    let s = if c <= 0.0031308 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
+    clamp_u8(s * 255.0)
+}
+
+/// Convert a CIELAB (D65) color back to 0-255 sRGB — the inverse of `to_lab`
+/// (Lab → XYZ via the CIE ε/κ nonlinearity and the D65 white, XYZ → linear sRGB
+/// via the Lindbloom inverse matrix, then sRGB companding).
+fn lab_to_rgb(l: f64, a: f64, b: f64) -> (u8, u8, u8) {
+    let fy = (l + 16.0) / 116.0;
+    let fx = a / 500.0 + fy;
+    let fz = fy - b / 200.0;
+    let finv = |t: f64| -> f64 {
+        const EPS: f64 = 216.0 / 24389.0;
+        const KAPPA: f64 = 24389.0 / 27.0;
+        let t3 = t * t * t;
+        if t3 > EPS {
+            t3
+        } else {
+            (116.0 * t - 16.0) / KAPPA
+        }
+    };
+    let (x, y, z) = (finv(fx) * 0.950489, finv(fy), finv(fz) * 1.088840);
+    let rl = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+    let gl = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+    let bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+    (linear_to_srgb(rl), linear_to_srgb(gl), linear_to_srgb(bl))
+}
+
+/// Convert a CIELAB (D65) color back to RGB — the inverse of `to_lab`. opts: `l`
+/// (0-100), `a`, `b`. Out-of-gamut results are clamped per channel. Returns
+/// `{r, g, b, hex}`. Pure.
+fn op_from_lab(v: Value) -> Result<Value> {
+    let l = v.get("l").and_then(Value::as_f64).unwrap_or(0.0);
+    let a = v.get("a").and_then(Value::as_f64).unwrap_or(0.0);
+    let b = v.get("b").and_then(Value::as_f64).unwrap_or(0.0);
+    let (r, g, bb) = lab_to_rgb(l, a, b);
+    Ok(rgb_out(r, g, bb))
+}
+
+/// Blend two RGB colors in CIELAB space by `weight` (the fraction of `b`,
+/// default 0.5, clamped to [0,1]) — the perceptual counterpart of `mix` (which
+/// interpolates in sRGB). Each color is converted to Lab, the L/a/b coordinates
+/// are linearly interpolated, and the result is converted back. opts: `a`, `b`
+/// (each `[r,g,b]` or `{r,g,b}`), `weight`. `weight` 0 returns `a`, 1 returns
+/// `b`. Returns `{r, g, b, hex}`. Pure.
+fn op_blend_lab(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let w = v
+        .get("weight")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
+    let (l1, a1, b1) = rgb_to_lab(ar, ag, ab);
+    let (l2, a2, b2) = rgb_to_lab(br, bg, bb);
+    let lerp = |x: f64, y: f64| x * (1.0 - w) + y * w;
+    let (r, g, b) = lab_to_rgb(lerp(l1, l2), lerp(a1, a2), lerp(b1, b2));
+    Ok(rgb_out(r, g, b))
+}
+
+/// Build an evenly-spaced gradient from color `a` to color `b` (each `[r,g,b]`
+/// or `{r,g,b}`) with `steps` stops (clamped to [2,256], default 5) interpolated
+/// in sRGB — endpoints inclusive, so a 2-stop gradient is just `[a, b]`. The
+/// per-stop blend matches `mix`. opts: `a`, `b`, `steps`. Returns
+/// `{stops: [{r,g,b,hex}, ...], steps}`. Pure.
+fn op_gradient(v: Value) -> Result<Value> {
+    let (ar, ag, ab) = rgb_of(v.get("a").unwrap_or(&Value::Null))?;
+    let (br, bg, bb) = rgb_of(v.get("b").unwrap_or(&Value::Null))?;
+    let steps = v
+        .get("steps")
+        .and_then(Value::as_i64)
+        .unwrap_or(5)
+        .clamp(2, 256);
+    let denom = (steps - 1) as f64;
+    let stops: Vec<Value> = (0..steps)
+        .map(|i| {
+            let w = i as f64 / denom;
+            let lerp = |x: i64, y: i64| clamp_u8(x as f64 * (1.0 - w) + y as f64 * w);
+            rgb_out(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
+        })
+        .collect();
+    Ok(json!({"stops": stops, "steps": steps}))
+}
+
+#[no_mangle]
+pub extern "C" fn gui__invert(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_invert)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__grayscale(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_grayscale)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__sepia(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_sepia)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__posterize(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_posterize)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__temperature(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_temperature)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__alpha_over(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_alpha_over)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__is_dark(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_is_dark)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__to_lab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_to_lab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__from_lab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_from_lab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__blend_lab(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_blend_lab)
+}
+
+#[no_mangle]
+pub extern "C" fn gui__gradient(args: *const c_char) -> *const c_char {
+    ffi_call(args, op_gradient)
+}
+
 #[no_mangle]
 pub extern "C" fn gui__parse_hotkey(args: *const c_char) -> *const c_char {
     ffi_call(args, op_parse_hotkey)
@@ -2051,6 +2364,305 @@ mod tests {
             json!("#00ffff"),
             "c clamps to 100 (→0 red), m/y stay 0 (→cyan)"
         );
+    }
+
+    #[test]
+    fn invert_is_the_rgb_complement() {
+        // Each channel is 255 - c, so red ↔ cyan and a mid-gray maps near itself.
+        assert_eq!(
+            op_invert(json!({"color": [255, 0, 0]})).unwrap()["hex"],
+            json!("#00ffff")
+        );
+        assert_eq!(
+            op_invert(json!({"color": [0, 0, 0]})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        assert_eq!(
+            op_invert(json!({"color": [255, 255, 255]})).unwrap()["hex"],
+            json!("#000000")
+        );
+        // 18 → 237, 52 → 203, 86 → 169; accepts the {r,g,b} shape too.
+        let v = op_invert(json!({"color": {"r": 18, "g": 52, "b": 86}})).unwrap();
+        assert_eq!(
+            [v["r"].clone(), v["g"].clone(), v["b"].clone()],
+            [json!(237), json!(203), json!(169)]
+        );
+        // Inverting twice is the identity.
+        let once = op_invert(json!({"color": [10, 120, 230]})).unwrap();
+        let twice =
+            op_invert(json!({"color": [once["r"].clone(), once["g"].clone(), once["b"].clone()]}))
+                .unwrap();
+        assert_eq!(
+            [twice["r"].clone(), twice["g"].clone(), twice["b"].clone()],
+            [json!(10), json!(120), json!(230)]
+        );
+        assert!(op_invert(json!({"color": [1, 2]})).is_err());
+    }
+
+    #[test]
+    fn grayscale_uses_rec709_luma_weights() {
+        // White and black are fixed points.
+        let w = op_grayscale(json!({"color": [255, 255, 255]})).unwrap();
+        assert_eq!(w["gray"], json!(255));
+        assert_eq!(w["hex"], json!("#ffffff"));
+        assert_eq!(
+            op_grayscale(json!({"color": [0, 0, 0]})).unwrap()["gray"],
+            json!(0)
+        );
+        // Pure channels carry the Rec.709 weights * 255, rounded:
+        // red round(0.2126*255)=54, green round(0.7152*255)=182, blue round(0.0722*255)=18.
+        assert_eq!(
+            op_grayscale(json!({"color": [255, 0, 0]})).unwrap()["gray"],
+            json!(54)
+        );
+        assert_eq!(
+            op_grayscale(json!({"color": [0, 255, 0]})).unwrap()["gray"],
+            json!(182)
+        );
+        assert_eq!(
+            op_grayscale(json!({"color": [0, 0, 255]})).unwrap()["gray"],
+            json!(18)
+        );
+        // The three channels all equal the single gray value (it's a gray).
+        let g = op_grayscale(json!({"color": [12, 200, 90]})).unwrap();
+        assert_eq!(g["r"], g["g"]);
+        assert_eq!(g["g"], g["b"]);
+        assert_eq!(g["r"], g["gray"]);
+        assert!(op_grayscale(json!({})).is_err());
+    }
+
+    #[test]
+    fn sepia_matrix_matches_hand_computed_values() {
+        // White: R'=255*1.351=344.6→clamp 255, G'=255*1.203=306.8→255,
+        // B'=255*0.937=238.9→round 239 (the classic warm clamp).
+        let w = op_sepia(json!({"color": [255, 255, 255]})).unwrap();
+        assert_eq!(
+            [w["r"].clone(), w["g"].clone(), w["b"].clone()],
+            [json!(255), json!(255), json!(239)]
+        );
+        // Black stays black (0 in → 0 out for every row).
+        assert_eq!(
+            op_sepia(json!({"color": [0, 0, 0]})).unwrap()["hex"],
+            json!("#000000")
+        );
+        // Pure red: R'=round(0.393*255)=100, G'=round(0.349*255)=89, B'=round(0.272*255)=69.
+        let r = op_sepia(json!({"color": [255, 0, 0]})).unwrap();
+        assert_eq!(
+            [r["r"].clone(), r["g"].clone(), r["b"].clone()],
+            [json!(100), json!(89), json!(69)]
+        );
+        assert!(op_sepia(json!({"color": "nope"})).is_err());
+    }
+
+    #[test]
+    fn posterize_quantizes_to_even_levels() {
+        // levels=2 → pure 0/255 two-tone (snap each channel to the nearer end).
+        let two = op_posterize(json!({"color": [10, 130, 250], "levels": 2})).unwrap();
+        assert_eq!(two["levels"], json!(2));
+        // 10/255≈0.039→0, 130/255≈0.51→round(0.51)=1→255, 250→255.
+        assert_eq!(
+            [two["r"].clone(), two["g"].clone(), two["b"].clone()],
+            [json!(0), json!(255), json!(255)]
+        );
+        // levels=3 → steps {0, 127.5→128, 255}; 64/255≈0.251*2=0.502→round=1→128.
+        let three = op_posterize(json!({"color": [64, 0, 255], "levels": 3})).unwrap();
+        assert_eq!(
+            [three["r"].clone(), three["g"].clone(), three["b"].clone()],
+            [json!(128), json!(0), json!(255)]
+        );
+        // Endpoints are always representable for any level count.
+        assert_eq!(
+            op_posterize(json!({"color": [255, 255, 255], "levels": 7})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        // levels below 2 clamps to 2 (avoids divide-by-zero on a single level).
+        assert_eq!(
+            op_posterize(json!({"color": [10, 10, 10], "levels": 1})).unwrap()["levels"],
+            json!(2)
+        );
+        assert!(op_posterize(json!({"levels": 4})).is_err());
+    }
+
+    #[test]
+    fn temperature_warms_and_cools() {
+        // Positive warms: +40 to red, -40 to blue, green untouched.
+        let warm = op_temperature(json!({"color": [100, 120, 140], "amount": 40})).unwrap();
+        assert_eq!(
+            [warm["r"].clone(), warm["g"].clone(), warm["b"].clone()],
+            [json!(140), json!(120), json!(100)]
+        );
+        // Negative cools (the reverse).
+        let cool = op_temperature(json!({"color": [100, 120, 140], "amount": -40})).unwrap();
+        assert_eq!(
+            [cool["r"].clone(), cool["g"].clone(), cool["b"].clone()],
+            [json!(60), json!(120), json!(180)]
+        );
+        // Channels clamp at 0/255; `delta` is an alias for `amount`.
+        let clamped = op_temperature(json!({"color": [250, 0, 5], "delta": 100})).unwrap();
+        assert_eq!(
+            [clamped["r"].clone(), clamped["b"].clone()],
+            [json!(255), json!(0)]
+        );
+        assert!(op_temperature(json!({"color": [1, 2, 3]})).is_err());
+    }
+
+    #[test]
+    fn alpha_over_composites_source_over() {
+        // alpha 1 returns fg, alpha 0 returns bg.
+        assert_eq!(
+            op_alpha_over(json!({"fg": [255, 0, 0], "bg": [0, 0, 255], "alpha": 1})).unwrap()
+                ["hex"],
+            json!("#ff0000")
+        );
+        assert_eq!(
+            op_alpha_over(json!({"fg": [255, 0, 0], "bg": [0, 0, 255], "alpha": 0})).unwrap()
+                ["hex"],
+            json!("#0000ff")
+        );
+        // alpha 0.5 is the per-channel midpoint (round(127.5)=128).
+        let half =
+            op_alpha_over(json!({"fg": [0, 0, 0], "bg": [255, 255, 255], "alpha": 0.5})).unwrap();
+        assert_eq!(half["hex"], json!("#808080"));
+        // Default alpha is 1 (opaque fg); `a`/`b` alias `fg`/`bg`.
+        assert_eq!(
+            op_alpha_over(json!({"a": [12, 34, 56], "b": [200, 200, 200]})).unwrap()["hex"],
+            json!("#0c2238")
+        );
+        // Out-of-range alpha clamps.
+        assert_eq!(
+            op_alpha_over(json!({"fg": [10, 10, 10], "bg": [200, 200, 200], "alpha": 5})).unwrap()
+                ["hex"],
+            json!("#0a0a0a")
+        );
+        assert!(op_alpha_over(json!({"fg": [1, 2, 3]})).is_err());
+    }
+
+    #[test]
+    fn is_dark_thresholds_relative_luminance() {
+        // Black is dark → suggest white text; white is light → suggest black text.
+        let black = op_is_dark(json!({"color": [0, 0, 0]})).unwrap();
+        assert_eq!(black["dark"], json!(true));
+        assert_eq!(black["text"], json!("white"));
+        let white = op_is_dark(json!({"color": [255, 255, 255]})).unwrap();
+        assert_eq!(white["dark"], json!(false));
+        assert_eq!(white["text"], json!("black"));
+        // The reported luminance agrees with relative_luminance and is the
+        // value compared against the threshold.
+        let mid = op_is_dark(json!({"color": [0, 128, 0]})).unwrap();
+        let lum = mid["luminance"].as_f64().unwrap();
+        assert!((lum - relative_luminance(0, 128, 0)).abs() < 1e-12);
+        assert_eq!(mid["dark"], json!(lum < 0.5));
+        // A custom threshold flips the verdict; it's echoed back.
+        let t = op_is_dark(json!({"color": [200, 200, 200], "threshold": 0.99})).unwrap();
+        assert_eq!(t["threshold"], json!(0.99));
+        assert_eq!(t["dark"], json!(true));
+        assert!(op_is_dark(json!({})).is_err());
+    }
+
+    #[test]
+    fn to_lab_matches_rgb_to_lab_helper() {
+        // The op is a thin JSON wrapper over rgb_to_lab; pin red's reference L*a*b*.
+        let red = op_to_lab(json!({"color": [255, 0, 0]})).unwrap();
+        assert!((red["l"].as_f64().unwrap() - 53.2408).abs() < 0.05);
+        assert!((red["a"].as_f64().unwrap() - 80.0925).abs() < 0.05);
+        assert!((red["b"].as_f64().unwrap() - 67.2032).abs() < 0.05);
+        // White → L100, near-zero chroma; black → all zero.
+        let w = op_to_lab(json!({"color": [255, 255, 255]})).unwrap();
+        assert!((w["l"].as_f64().unwrap() - 100.0).abs() < 1e-3);
+        assert!(w["a"].as_f64().unwrap().abs() < 0.02);
+        let k = op_to_lab(json!({"color": [0, 0, 0]})).unwrap();
+        assert!(k["l"].as_f64().unwrap().abs() < 1e-9);
+        assert!(op_to_lab(json!({"color": [1, 2]})).is_err());
+    }
+
+    #[test]
+    fn from_lab_inverts_to_lab() {
+        // Reference endpoints.
+        assert_eq!(
+            op_from_lab(json!({"l": 0, "a": 0, "b": 0})).unwrap()["hex"],
+            json!("#000000")
+        );
+        assert_eq!(
+            op_from_lab(json!({"l": 100, "a": 0, "b": 0})).unwrap()["hex"],
+            json!("#ffffff")
+        );
+        // Round-trip: RGB → to_lab → from_lab reproduces the original (±1 LSB
+        // from the float round-trip is acceptable for an 8-bit pipeline).
+        for rgb in [
+            [255, 0, 0],
+            [0, 128, 0],
+            [0, 0, 255],
+            [18, 52, 86],
+            [200, 100, 50],
+            [12, 200, 90],
+        ] {
+            let lab = op_to_lab(json!({"color": rgb})).unwrap();
+            let back = op_from_lab(json!({"l": lab["l"], "a": lab["a"], "b": lab["b"]})).unwrap();
+            for (i, key) in ["r", "g", "b"].iter().enumerate() {
+                let got = back[*key].as_i64().unwrap();
+                assert!(
+                    (got - rgb[i]).abs() <= 1,
+                    "{key} round-trips for {rgb:?}: got {got} want {}",
+                    rgb[i]
+                );
+            }
+        }
+        // Out-of-gamut Lab clamps per channel rather than wrapping.
+        let oog = op_from_lab(json!({"l": 200, "a": 0, "b": 0})).unwrap();
+        assert_eq!(oog["hex"], json!("#ffffff"));
+    }
+
+    #[test]
+    fn blend_lab_interpolates_in_lab_space() {
+        // Endpoints are exact (weight 0 → a, weight 1 → b).
+        assert_eq!(
+            op_blend_lab(json!({"a": [255, 0, 0], "b": [0, 0, 255], "weight": 0})).unwrap()["hex"],
+            json!("#ff0000")
+        );
+        assert_eq!(
+            op_blend_lab(json!({"a": [255, 0, 0], "b": [0, 0, 255], "weight": 1})).unwrap()["hex"],
+            json!("#0000ff")
+        );
+        // Black↔white midpoint in Lab is L=50, which is a darker gray than the
+        // sRGB midpoint #808080 that `mix` produces — that difference IS the
+        // reason this op exists. L=50 → linear ~0.184 → sRGB ~0.466 → ~119.
+        let lab_mid = op_blend_lab(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap();
+        let srgb_mid = op_mix(json!({"a": [0, 0, 0], "b": [255, 255, 255]})).unwrap();
+        let lm = lab_mid["r"].as_i64().unwrap();
+        assert!((lm - 119).abs() <= 1, "Lab midpoint gray ≈119, got {lm}");
+        assert!(
+            lm < srgb_mid["r"].as_i64().unwrap(),
+            "Lab midpoint is darker than the sRGB midpoint"
+        );
+        assert!(op_blend_lab(json!({"a": [1, 2]})).is_err());
+    }
+
+    #[test]
+    fn gradient_emits_inclusive_evenly_spaced_stops() {
+        // A 2-stop gradient is just [a, b].
+        let two = op_gradient(json!({"a": [0, 0, 0], "b": [255, 255, 255], "steps": 2})).unwrap();
+        let stops = two["stops"].as_array().unwrap();
+        assert_eq!(stops.len(), 2);
+        assert_eq!(stops[0]["hex"], json!("#000000"));
+        assert_eq!(stops[1]["hex"], json!("#ffffff"));
+        // A 5-stop black→white gradient: round(255*i/4) = 0, 64, 128, 191, 255.
+        let five = op_gradient(json!({"a": [0, 0, 0], "b": [255, 255, 255], "steps": 5})).unwrap();
+        let s = five["stops"].as_array().unwrap();
+        assert_eq!(s.len(), 5);
+        let grays: Vec<i64> = s.iter().map(|c| c["r"].as_i64().unwrap()).collect();
+        assert_eq!(grays, vec![0, 64, 128, 191, 255]);
+        assert_eq!(five["steps"], json!(5));
+        // Endpoints always match a and b exactly regardless of step count.
+        let g = op_gradient(json!({"a": [255, 0, 0], "b": [0, 0, 255], "steps": 9})).unwrap();
+        let gs = g["stops"].as_array().unwrap();
+        assert_eq!(gs.first().unwrap()["hex"], json!("#ff0000"));
+        assert_eq!(gs.last().unwrap()["hex"], json!("#0000ff"));
+        // steps below 2 clamps to 2.
+        assert_eq!(
+            op_gradient(json!({"a": [0, 0, 0], "b": [1, 1, 1], "steps": 1})).unwrap()["steps"],
+            json!(2)
+        );
+        assert!(op_gradient(json!({"a": [1, 2], "b": [3, 4, 5]})).is_err());
     }
 }
 

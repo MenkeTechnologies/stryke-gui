@@ -435,3 +435,84 @@ fn GUI::to_cmyk ($color) {
 fn GUI::from_cmyk ($c, $m, $y, $k) {
     GUI::_decode("from_cmyk", gui__from_cmyk(to_json({ c => $c, m => $m, y => $y, k => $k })))
 }
+
+## Invert an RGB $color ([r,g,b] or { r, g, b }, 0-255): each channel becomes
+## 255 - c (the photographic-negative / RGB complement). Returns
+## { r, g, b, hex }.
+fn GUI::invert ($color) {
+    GUI::_decode("invert", gui__invert(to_json({ color => $color })))
+}
+
+## Convert an RGB $color to grayscale using the Rec. 709 luma weights
+## (0.2126R + 0.7152G + 0.0722B) — the perceived-brightness gray. Returns
+## { r, g, b, hex, gray } where the three channels share the single 0-255 gray.
+fn GUI::grayscale ($color) {
+    GUI::_decode("grayscale", gui__grayscale(to_json({ color => $color })))
+}
+
+## Apply the classic sepia-tone color matrix to an RGB $color (the warm
+## brown-tinted aged-photo look); each output channel is a fixed combination of
+## the input, clamped 0-255. Returns { r, g, b, hex }.
+fn GUI::sepia ($color) {
+    GUI::_decode("sepia", gui__sepia(to_json({ color => $color })))
+}
+
+## Quantize each channel of an RGB $color to $levels evenly-spaced steps (the
+## poster / banding effect); $levels clamps to [2,256] (2 = pure 0/255 two-tone).
+## Returns { r, g, b, hex, levels }.
+fn GUI::posterize ($color, $levels = 4) {
+    GUI::_decode("posterize", gui__posterize(to_json({ color => $color, levels => $levels })))
+}
+
+## Shift an RGB $color's warmth by $amount: positive warms (adds to red,
+## subtracts from blue), negative cools (the reverse); green is untouched and
+## every channel clamps 0-255. A simple additive white-balance nudge. Returns
+## { r, g, b, hex }.
+fn GUI::temperature ($color, $amount) {
+    GUI::_decode("temperature", gui__temperature(to_json({ color => $color, amount => $amount })))
+}
+
+## Composite a foreground $fg over a background $bg (source-over): each channel
+## is $fg*$alpha + $bg*(1-$alpha). $fg/$bg are [r,g,b] or { r, g, b }; $alpha is
+## 0-1 (default 1, clamped). $alpha 1 → $fg, 0 → $bg. Returns { r, g, b, hex }.
+fn GUI::alpha_over ($fg, $bg, $alpha = 1) {
+    GUI::_decode("alpha_over", gui__alpha_over(to_json({ fg => $fg, bg => $bg, alpha => $alpha })))
+}
+
+## Whether an RGB $color is "dark" by WCAG relative luminance (luminance below
+## $threshold, default 0.5) — the pick-a-text-color test. $color is [r,g,b] or
+## { r, g, b }. Returns { dark, luminance, threshold, text } where text is the
+## suggested "white"/"black" foreground.
+fn GUI::is_dark ($color, $threshold = 0.5) {
+    GUI::_decode("is_dark", gui__is_dark(to_json({ color => $color, threshold => $threshold })))
+}
+
+## Convert an RGB $color ([r,g,b] or { r, g, b }, 0-255) to CIELAB (D65) — the
+## perceptually-uniform space delta_e works in. Returns { l, a, b } (l in
+## [0,100], a/b roughly ±128). Inverse: from_lab.
+fn GUI::to_lab ($color) {
+    GUI::_decode("to_lab", gui__to_lab(to_json({ color => $color })))
+}
+
+## Convert a CIELAB (D65) color back to RGB — inverse of to_lab. $l in [0,100],
+## $a and $b roughly ±128; out-of-gamut results clamp per channel. Returns a
+## hashref { r, g, b, hex }.
+fn GUI::from_lab ($l, $a, $b) {
+    GUI::_decode("from_lab", gui__from_lab(to_json({ l => $l, a => $a, b => $b })))
+}
+
+## Blend two RGB colors $a and $b (each [r,g,b] or { r, g, b }) in CIELAB space
+## by $weight (fraction of $b, default 0.5, clamped 0-1) — the perceptual
+## counterpart of mix (which blends in sRGB). $weight 0 → $a, 1 → $b. Returns
+## { r, g, b, hex }.
+fn GUI::blend_lab ($a, $b, $weight = 0.5) {
+    GUI::_decode("blend_lab", gui__blend_lab(to_json({ a => $a, b => $b, weight => $weight })))
+}
+
+## Build an evenly-spaced sRGB gradient from $a to $b (each [r,g,b] or
+## { r, g, b }) with $steps stops (clamped [2,256], default 5) — endpoints
+## inclusive, so a 2-stop gradient is just [$a, $b]. Returns
+## { stops => [{ r, g, b, hex }, ...], steps }.
+fn GUI::gradient ($a, $b, $steps = 5) {
+    GUI::_decode("gradient", gui__gradient(to_json({ a => $a, b => $b, steps => $steps })))
+}

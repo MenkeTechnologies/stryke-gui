@@ -84,7 +84,7 @@ No `cargo`, no `rustc`, no per-target build step on the user's machine.
 Pin a specific release:
 
 ```sh
-s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.3.1
+s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.19.0
 ```
 
 Override the auto-detected host triple (e.g. for musl) via
@@ -306,6 +306,7 @@ src/
   mouse.rs             motion / buttons / wheel / size / pos
   keyboard.rs          key-name table + press / type / hotkey
   capture.rs           pixel + screenshot (xcap)
+  clipboard.rs         clipboard get / set (arboard)
 lib/GUI.stk            stryke wrappers (JSON args → FFI symbol → JSON return)
 examples/              runnable demos
 t/test_gui.stk         plumbing tests (permission-free FFI surface)

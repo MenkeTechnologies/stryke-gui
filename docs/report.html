@@ -103,6 +103,8 @@
         <div class="stat-card"><div class="stat-val">JSON-over-FFI</div><div class="stat-label">Envelope</div></div>
         <div class="stat-card"><div class="stat-val green">enigo + xcap + arboard</div><div class="stat-label">Native deps</div></div>
         <div class="stat-card"><div class="stat-val">3</div><div class="stat-label">Platforms (macOS / Linux / Windows)</div></div>
+        <div class="stat-card"><div class="stat-val cyan">69</div><div class="stat-label">Public GUI:: functions</div></div>
+        <div class="stat-card"><div class="stat-val">31 / 38</div><div class="stat-label">Device fns / pure helpers</div></div>
       </div>
 
       <hr class="section-rule">
@@ -155,7 +157,40 @@
       <hr class="section-rule">
       <h2 class="tutorial-title"><span class="step-hash">/</span>SCOPE</h2>
       <p>The surface is a PyAutoGUI-equivalent &mdash; mouse motion / buttons / wheel, keyboard press / type / hotkey, screen size + bounds, pixel reads, and full or region screenshots. Coordinates use a top-left origin; the primary display only. Tweened motion runs at 60 fps via linear interpolation; <code>duration &le; 0</code> is a single-step warp.</p>
-      <p>See the README's <a href="https://github.com/MenkeTechnologies/stryke-gui#0x04-api-reference">API reference</a> for the authoritative function list. The package mirrors PyAutoGUI's shape so existing automation scripts port directly with <code>GUI::</code> in place of <code>pyautogui.</code>.</p>
+      <p>The package exposes <strong>69 public <code>GUI::</code> functions</strong> (counted from <code>lib/GUI.stk</code>), backed by 60 <code>gui__*</code> cdylib exports in <code>src/lib.rs</code> &mdash; the difference is convenience wrappers (<code>mouse_size</code>, the right/middle/double/triple click and relative-drag/hscroll variants) that reuse a shared export. The surface divides into a device half (31 functions) and a pure half (38 functions) that runs headless with no display or permission gate.</p>
+      <table class="arch-table">
+        <thead><tr><th>Category</th><th>Functions</th></tr></thead>
+        <tbody>
+          <tr><td>Position &amp; size</td><td><code>mouse_pos</code>, <code>screen_size</code>, <code>mouse_size</code>, <code>on_screen</code></td></tr>
+          <tr><td>Mouse motion</td><td><code>mouse_move</code>, <code>mouse_move_rel</code>, <code>mouse_drag</code>, <code>mouse_drag_rel</code></td></tr>
+          <tr><td>Mouse buttons</td><td><code>mouse_click</code>, <code>mouse_right_click</code>, <code>mouse_middle_click</code>, <code>mouse_double_click</code>, <code>mouse_triple_click</code>, <code>mouse_down</code>, <code>mouse_up</code></td></tr>
+          <tr><td>Mouse wheel</td><td><code>mouse_scroll</code>, <code>mouse_hscroll</code></td></tr>
+          <tr><td>Keyboard</td><td><code>key_press</code>, <code>key_down</code>, <code>key_up</code>, <code>key_type</code>, <code>key_hotkey</code>, <code>keyboard_keys</code></td></tr>
+          <tr><td>Pixel &amp; screenshot</td><td><code>pixel</code>, <code>pixel_matches_color</code>, <code>screenshot</code>, <code>screenshot_region</code></td></tr>
+          <tr><td>Clipboard &amp; displays</td><td><code>clipboard_get</code>, <code>clipboard_set</code>, <code>displays</code>, <code>display_screenshot</code></td></tr>
+          <tr><td>Pure hotkey helpers</td><td><code>parse_hotkey</code>, <code>format_hotkey</code></td></tr>
+          <tr><td>Pure color parse / compare</td><td><code>parse_color</code>, <code>format_color</code>, <code>color_distance</code>, <code>delta_e</code>, <code>contrast_ratio</code>, <code>relative_luminance</code>, <code>is_dark</code>, <code>name_color</code></td></tr>
+          <tr><td>Pure color transforms</td><td><code>mix</code>, <code>blend_lab</code>, <code>blend_oklab</code>, <code>gradient</code>, <code>rotate_hue</code>, <code>adjust_lightness</code>, <code>adjust_saturation</code>, <code>invert</code>, <code>grayscale</code>, <code>sepia</code>, <code>posterize</code>, <code>temperature</code>, <code>alpha_over</code>, <code>scheme</code></td></tr>
+          <tr><td>Pure color-space conversions</td><td><code>to_hsl</code>/<code>from_hsl</code>, <code>to_hsv</code>/<code>from_hsv</code>, <code>to_hwb</code>/<code>from_hwb</code>, <code>to_cmyk</code>/<code>from_cmyk</code>, <code>to_lab</code>/<code>from_lab</code>, <code>to_xyz</code>/<code>from_xyz</code>, <code>to_oklab</code>/<code>from_oklab</code></td></tr>
+        </tbody>
+      </table>
+      <p>See the README's <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-api-reference">API reference</a> for the authoritative function list with per-field notes. The device half mirrors PyAutoGUI's shape so existing automation scripts port directly with <code>GUI::</code> in place of <code>pyautogui.</code>; the pure color half has no PyAutoGUI counterpart.</p>
+
+      <hr class="section-rule">
+      <h2 class="tutorial-title"><span class="step-hash">+</span>DEPENDENCIES</h2>
+      <p>The cdylib pulls in the native input/display stack plus the JSON envelope crates. The release profile (<code>Cargo.toml</code>) builds with <code>opt-level = 3</code>, thin LTO, a single codegen unit, symbols stripped, and <code>panic = "abort"</code>.</p>
+      <table class="arch-table">
+        <thead><tr><th>Crate</th><th>Version</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>enigo</code></td><td>0.6</td><td>mouse + keyboard synthesis (CGEvent / XTest / Wayland virtual-pointer / SendInput)</td></tr>
+          <tr><td><code>xcap</code></td><td>0.9</td><td>screen capture + pixel reads (ScreenCaptureKit / XGetImage / portal / GDI)</td></tr>
+          <tr><td><code>arboard</code></td><td>3</td><td>cross-platform clipboard (NSPasteboard / X11+Wayland / Win32)</td></tr>
+          <tr><td><code>image</code></td><td>0.25</td><td>PNG encode for screenshots (<code>png</code> feature only)</td></tr>
+          <tr><td><code>serde</code> / <code>serde_json</code></td><td>1</td><td>JSON-over-FFI envelope (<code>preserve_order</code> on the JSON side)</td></tr>
+          <tr><td><code>anyhow</code></td><td>1</td><td>error handling inside the cdylib</td></tr>
+          <tr><td><code>once_cell</code></td><td>1</td><td>process-global persistent <code>Enigo</code> handle</td></tr>
+        </tbody>
+      </table>
 
       <hr class="section-rule">
       <h2 class="tutorial-title"><span class="step-hash">!</span>PERMISSIONS</h2>

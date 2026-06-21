@@ -149,6 +149,7 @@ my $path = GUI::screenshot("/tmp/shot.png")</pre>
 
       <section class="tutorial-section">
         <h2>Surface: <code>use GUI</code></h2>
+        <p>Everything lives in the <code>GUI::</code> namespace and becomes available after <code>use GUI</code>. Coordinates use a top-left origin and address the primary display only. The surface splits into two halves: <strong>device</strong> functions (mouse / keyboard / pixel / screenshot / clipboard / displays) that touch the OS input + capture stack, and <strong>pure</strong> helpers (hotkey + color math) that run headless with no display or permission requirement. The tables below enumerate the full public surface; signatures and defaults are taken from <code>lib/GUI.stk</code>.</p>
         <table class="example-tbl">
           <tbody>
             <tr><td>cursor position</td><td><code>my ($x, $y) = GUI::mouse_pos()</code></td></tr>
@@ -161,7 +162,158 @@ my $path = GUI::screenshot("/tmp/shot.png")</pre>
             <tr><td>clipboard read / write</td><td><code>GUI::clipboard_set("hi"); my $t = GUI::clipboard_get()</code></td></tr>
           </tbody>
         </table>
-        <p>The full API lives in the <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-api-reference">README "API reference" section</a>.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; position &amp; size</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::mouse_pos()</code></td><td>returns <code>($x, $y)</code> &mdash; current cursor position</td></tr>
+            <tr><td><code>GUI::screen_size()</code></td><td>returns <code>($w, $h)</code> &mdash; primary display size</td></tr>
+            <tr><td><code>GUI::mouse_size()</code></td><td>alias of <code>screen_size</code> &mdash; returns <code>($w, $h)</code></td></tr>
+            <tr><td><code>GUI::on_screen($x, $y)</code></td><td><code>1</code> / <code>0</code> &mdash; whether the point is inside the primary display bounds</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; mouse motion</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::mouse_move($x, $y, $duration=0)</code></td><td>absolute move; <code>$duration&gt;0</code> tweens at 60&nbsp;fps, otherwise a single-step warp</td></tr>
+            <tr><td><code>GUI::mouse_move_rel($dx, $dy, $duration=0)</code></td><td>relative move from the current position</td></tr>
+            <tr><td><code>GUI::mouse_drag($x, $y, $duration=0, $button="left")</code></td><td>press &rarr; drag to <code>($x,$y)</code> &rarr; release</td></tr>
+            <tr><td><code>GUI::mouse_drag_rel($dx, $dy, $duration=0, $button="left")</code></td><td>relative press-drag-release</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; mouse buttons</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::mouse_click(%opts)</code></td><td>opts: <code>x</code>, <code>y</code>, <code>clicks=1</code>, <code>interval=0</code>, <code>button="left"</code>; omitting <code>x</code>/<code>y</code> clicks in place</td></tr>
+            <tr><td><code>GUI::mouse_right_click($x?, $y?)</code></td><td>single right click; optional point to move there first</td></tr>
+            <tr><td><code>GUI::mouse_middle_click($x?, $y?)</code></td><td>single middle click</td></tr>
+            <tr><td><code>GUI::mouse_double_click($x?, $y?, $button="left")</code></td><td>two clicks</td></tr>
+            <tr><td><code>GUI::mouse_triple_click($x?, $y?, $button="left")</code></td><td>three clicks</td></tr>
+            <tr><td><code>GUI::mouse_down($button="left")</code> / <code>GUI::mouse_up($button="left")</code></td><td>hold / release a button</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; mouse wheel</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::mouse_scroll($clicks, $x?, $y?)</code></td><td>vertical scroll (positive = up); optional point to move there first</td></tr>
+            <tr><td><code>GUI::mouse_hscroll($clicks, $x?, $y?)</code></td><td>horizontal scroll</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; keyboard</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::key_press($name, $presses=1, $interval=0)</code></td><td>discrete key press(es)</td></tr>
+            <tr><td><code>GUI::key_down($name)</code> / <code>GUI::key_up($name)</code></td><td>hold / release a key</td></tr>
+            <tr><td><code>GUI::key_type($text, $interval=0)</code></td><td>type layout-correct literal text, one char at a time</td></tr>
+            <tr><td><code>GUI::key_hotkey(@keys)</code></td><td>chord: press keys in order, release in reverse (e.g. <code>"cmd", "s"</code>)</td></tr>
+            <tr><td><code>GUI::keyboard_keys()</code></td><td>list of every recognized key name (permission-free query)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; pixel &amp; screenshot</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::pixel($x, $y)</code></td><td>returns <code>($r, $g, $b)</code> at the point</td></tr>
+            <tr><td><code>GUI::pixel_matches_color($x, $y, [$r,$g,$b], $tol=0)</code></td><td><code>1</code> / <code>0</code> &mdash; pixel matches within <code>$tol</code> per channel</td></tr>
+            <tr><td><code>GUI::screenshot($path?)</code></td><td>with path: writes a PNG, returns the path; without: returns <code>($w, $h, \@rgba)</code></td></tr>
+            <tr><td><code>GUI::screenshot_region($l, $t, $w, $h, $path?)</code></td><td>same as <code>screenshot</code> but for an <code>($l,$t,$w,$h)</code> region</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; clipboard &amp; displays</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::clipboard_get()</code></td><td>clipboard text (<code>""</code> if none)</td></tr>
+            <tr><td><code>GUI::clipboard_set($text)</code></td><td>set clipboard text; returns <code>1</code></td></tr>
+            <tr><td><code>GUI::displays()</code></td><td>one hash per monitor: <code>{ id, name, x, y, width, height, scale, primary }</code></td></tr>
+            <tr><td><code>GUI::display_screenshot($id, $path?)</code></td><td>capture a specific monitor by id; path/inline semantics mirror <code>screenshot</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; pure hotkey helpers</h2>
+        <p>These touch no device &mdash; accelerator parsing / canonicalization that runs headless with no permission gate.</p>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::parse_hotkey("ctrl+shift+a")</code></td><td><code>{ keys, modifiers, key }</code> &mdash; last segment is the key, the rest are modifiers</td></tr>
+            <tr><td><code>GUI::format_hotkey(\%parts)</code></td><td><code>{ hotkey, modifiers, key }</code> &mdash; inverse of <code>parse_hotkey</code>; canonicalizes W3C modifier names (Control/Alt/Shift/Meta), deduped and ordered; takes <code>{ keys }</code> or <code>{ modifiers, key }</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; color parsing &amp; comparison</h2>
+        <p>The color helpers are pure (no display, no permission). Every input accepts the forms <code>parse_color</code> understands &mdash; <code>#rgb</code>, <code>#rrggbb</code>, <code>rgb(r,g,b)</code>, or a <code>{r,g,b}</code> / <code>[r,g,b]</code> structure. Most return a <code>{ r, g, b, hex }</code> color.</p>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::parse_color("#ff8800")</code></td><td><code>{ r, g, b, hex }</code> &mdash; parse a color string</td></tr>
+            <tr><td><code>GUI::format_color($color, %opts)</code></td><td><code>{ r, g, b, format, formatted }</code> &mdash; inverse of <code>parse_color</code>; <code>format</code> <code>hex</code> (default) or <code>rgb</code>; clamps 0&ndash;255</td></tr>
+            <tr><td><code>GUI::color_distance($a, $b)</code></td><td><code>{ manhattan, euclidean }</code> &mdash; RGB distance for pixel-match tolerance</td></tr>
+            <tr><td><code>GUI::delta_e($a, $b)</code></td><td><code>{ delta_e, lab_a, lab_b }</code> &mdash; perceptual &Delta;E00 (CIEDE2000) via CIELAB/D65</td></tr>
+            <tr><td><code>GUI::contrast_ratio($a, $b)</code></td><td><code>{ ratio, aa_normal, aa_large, aaa_normal, aaa_large }</code> &mdash; WCAG 2.1 contrast (1&ndash;21) + threshold flags</td></tr>
+            <tr><td><code>GUI::relative_luminance($color)</code></td><td><code>0&ndash;1</code> &mdash; WCAG 2.1 relative luminance of one color</td></tr>
+            <tr><td><code>GUI::is_dark($color, $threshold=0.5)</code></td><td><code>{ dark, luminance, threshold, text }</code> &mdash; dark/light test; <code>text</code> is the suggested <code>"white"</code>/<code>"black"</code> foreground</td></tr>
+            <tr><td><code>GUI::name_color($color)</code></td><td><code>{ name, delta_e, r, g, b, hex }</code> &mdash; nearest CSS named color by &Delta;E00</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; color transforms</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::mix($a, $b, $weight=0.5)</code></td><td><code>{ r, g, b, hex }</code> &mdash; blend in linear sRGB (weight = fraction of <code>$b</code>)</td></tr>
+            <tr><td><code>GUI::blend_lab($a, $b, $weight=0.5)</code></td><td><code>{ r, g, b, hex }</code> &mdash; blend in CIELAB (perceptual)</td></tr>
+            <tr><td><code>GUI::blend_oklab($a, $b, $weight=0.5)</code></td><td><code>{ r, g, b, hex }</code> &mdash; blend in Oklab (most perceptually even)</td></tr>
+            <tr><td><code>GUI::gradient($a, $b, $steps=5)</code></td><td><code>{ stops =&gt; [{ r, g, b, hex }, ...], steps }</code> &mdash; evenly-spaced sRGB stops, endpoints inclusive ([2,256])</td></tr>
+            <tr><td><code>GUI::rotate_hue($color, $degrees)</code></td><td><code>{ r, g, b, hex, h }</code> &mdash; rotate hue in HSL; wraps mod 360</td></tr>
+            <tr><td><code>GUI::adjust_lightness($color, $delta)</code></td><td><code>{ r, g, b, hex, l }</code> &mdash; nudge HSL lightness (clamp [0,100])</td></tr>
+            <tr><td><code>GUI::adjust_saturation($color, $delta)</code></td><td><code>{ r, g, b, hex, s }</code> &mdash; nudge HSL saturation (-100 &rarr; greyscale)</td></tr>
+            <tr><td><code>GUI::invert($color)</code></td><td><code>{ r, g, b, hex }</code> &mdash; RGB complement (<code>255 - c</code> per channel)</td></tr>
+            <tr><td><code>GUI::grayscale($color)</code></td><td><code>{ r, g, b, hex, gray }</code> &mdash; Rec.&nbsp;709 luma gray</td></tr>
+            <tr><td><code>GUI::sepia($color)</code></td><td><code>{ r, g, b, hex }</code> &mdash; sepia-tone color matrix</td></tr>
+            <tr><td><code>GUI::posterize($color, $levels=4)</code></td><td><code>{ r, g, b, hex, levels }</code> &mdash; quantize each channel to <code>$levels</code> steps ([2,256])</td></tr>
+            <tr><td><code>GUI::temperature($color, $amount)</code></td><td><code>{ r, g, b, hex }</code> &mdash; warm (<code>+</code>) / cool (<code>-</code>) white-balance nudge</td></tr>
+            <tr><td><code>GUI::alpha_over($fg, $bg, $alpha=1)</code></td><td><code>{ r, g, b, hex }</code> &mdash; source-over composite <code>$fg*$alpha + $bg*(1-$alpha)</code></td></tr>
+            <tr><td><code>GUI::scheme($color, $scheme?)</code></td><td><code>{ scheme, colors =&gt; [...] }</code> &mdash; <code>complementary</code> (default), <code>triadic</code>, <code>analogous</code>, <code>split</code>, <code>tetradic</code>, <code>square</code>; base is first</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Reference &mdash; color space conversions</h2>
+        <p>Round-trip conversions between sRGB and the common color models. Each <code>to_*</code> has a matching <code>from_*</code> inverse; out-of-gamut results clamp per channel.</p>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td><code>GUI::to_hsl($color)</code> / <code>GUI::from_hsl($h, $s, $l)</code></td><td><code>{ h, s, l }</code> (CSS spec; h in degrees, s/l in percent)</td></tr>
+            <tr><td><code>GUI::to_hsv($color)</code> / <code>GUI::from_hsv($h, $s, $v)</code></td><td><code>{ h, s, v }</code> (HSV/HSB color-picker model)</td></tr>
+            <tr><td><code>GUI::to_hwb($color)</code> / <code>GUI::from_hwb($h, $w, $b)</code></td><td><code>{ h, w, b }</code> (Hue-Whiteness-Blackness, CSS Color 4)</td></tr>
+            <tr><td><code>GUI::to_cmyk($color)</code> / <code>GUI::from_cmyk($c, $m, $y, $k)</code></td><td><code>{ c, m, y, k }</code> percentages (profile-free)</td></tr>
+            <tr><td><code>GUI::to_lab($color)</code> / <code>GUI::from_lab($l, $a, $b)</code></td><td><code>{ l, a, b }</code> CIELAB (D65); the space <code>delta_e</code> works in</td></tr>
+            <tr><td><code>GUI::to_xyz($color)</code> / <code>GUI::from_xyz($x, $y, $z)</code></td><td><code>{ x, y, z }</code> CIE XYZ (D65) linear tristimulus</td></tr>
+            <tr><td><code>GUI::to_oklab($color)</code> / <code>GUI::from_oklab($l, $a, $b)</code></td><td><code>{ l, a, b }</code> Oklab (Ottosson 2020, CSS Color 4)</td></tr>
+          </tbody>
+        </table>
+        <p>The authoritative list with full per-field notes lives in the <a href="https://github.com/MenkeTechnologies/stryke-gui#0x03-api-reference">README "API reference" section</a>.</p>
       </section>
 
       <section class="tutorial-section">
@@ -182,6 +334,24 @@ my $path = GUI::screenshot("/tmp/shot.png")</pre>
             <tr><td>macOS</td><td>First mouse/keyboard call prompts for <strong>Accessibility</strong>; first pixel/screenshot call prompts for <strong>Screen Recording</strong> (System Settings &rarr; Privacy &amp; Security). One-time grants for the terminal app running <code>s</code>.</td></tr>
             <tr><td>Wayland (Linux)</td><td>Requires the <code>wlroots-virtual-pointer</code> protocol (mouse/keyboard) and the <code>org.freedesktop.portal.Screenshot</code> portal (pixel/screen).</td></tr>
             <tr><td>X11 (Linux), Windows</td><td>No permission gates.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Tests</h2>
+        <p><code>make test</code> runs <code>cargo test</code> then <code>s test t/</code>. The Rust unit tests cover the FFI plumbing &mdash; JSON-in/out wrapper, error-on-panic behavior, the free-cstring contract, and region parsing &mdash; all headless and CI-safe. <code>t/test_gui.stk</code> exercises the end-to-end stryke &rarr; FFI &rarr; cdylib call path via the permission-free <code>GUI::keyboard_keys()</code> query. Mouse / keyboard / pixel ops need real OS permissions, so they aren't asserted in CI.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h2>Troubleshooting</h2>
+        <table class="example-tbl">
+          <tbody>
+            <tr><td>mouse/keyboard calls do nothing (macOS)</td><td>Grant <strong>Accessibility</strong> to the terminal app running <code>s</code> in System Settings &rarr; Privacy &amp; Security, then restart the terminal.</td></tr>
+            <tr><td>pixel/screenshot returns blank or errors (macOS)</td><td>Grant <strong>Screen Recording</strong> to the same terminal app; this is a separate one-time grant from Accessibility.</td></tr>
+            <tr><td>capture fails on Wayland</td><td>Requires the <code>org.freedesktop.portal.Screenshot</code> portal; input needs <code>wlroots-virtual-pointer</code>. Compositors without these protocols can't be driven.</td></tr>
+            <tr><td>install can't find a prebuilt artifact</td><td>Override the auto-detected host triple, e.g. <code>STRYKE_TARGET=x86_64-unknown-linux-musl s pkg install -g github.com/MenkeTechnologies/stryke-gui</code>.</td></tr>
+            <tr><td>contributor build fails to link (Linux)</td><td>Install the <code>enigo</code>/<code>xcap</code> system <code>-dev</code> libraries listed under Install before <code>cargo build --release</code>.</td></tr>
           </tbody>
         </table>
       </section>

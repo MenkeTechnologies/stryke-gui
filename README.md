@@ -101,14 +101,14 @@ val ($w, $h) = GUI::screen_size()
 p "cursor ($x, $y) on ${w}x${h}"
 
 # move + click + type
-GUI::mouse_move(int($w / 2), int($h / 2), 0.3)   # animated over 0.3s
+GUI::mouse_move int($w / 2), int($h / 2), 0.3    # animated over 0.3s
 GUI::mouse_click()
-GUI::key_type("hello from stryke", 0.05)
-GUI::key_hotkey("cmd", "s")                       # ⌘S  (ctrl on Linux/Win)
+GUI::key_type "hello from stryke", 0.05
+GUI::key_hotkey "cmd", "s"                        # ⌘S  (ctrl on Linux/Win)
 
 # read a pixel, grab a screenshot
-val ($r, $g, $b) = GUI::pixel(100, 100)
-val $path = GUI::screenshot("/tmp/shot.png")
+val ($r, $g, $b) = GUI::pixel 100, 100
+val $path = GUI::screenshot "/tmp/shot.png"
 ```
 
 ## [0x03] API reference

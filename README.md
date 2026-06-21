@@ -96,8 +96,8 @@ Override the auto-detected host triple (e.g. for musl) via
 use GUI
 
 # where is the cursor, how big is the screen?
-my ($x, $y) = GUI::mouse_pos()
-my ($w, $h) = GUI::screen_size()
+val ($x, $y) = GUI::mouse_pos()
+val ($w, $h) = GUI::screen_size()
 p "cursor ($x, $y) on ${w}x${h}"
 
 # move + click + type
@@ -107,8 +107,8 @@ GUI::key_type("hello from stryke", 0.05)
 GUI::key_hotkey("cmd", "s")                       # ⌘S  (ctrl on Linux/Win)
 
 # read a pixel, grab a screenshot
-my ($r, $g, $b) = GUI::pixel(100, 100)
-my $path = GUI::screenshot("/tmp/shot.png")
+val ($r, $g, $b) = GUI::pixel(100, 100)
+val $path = GUI::screenshot("/tmp/shot.png")
 ```
 
 ## [0x03] API reference

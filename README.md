@@ -24,6 +24,8 @@ across calls inside the cdylib for the life of the stryke process.
 
 ### [`strykelang`](https://github.com/MenkeTechnologies/strykelang) &middot; [`stryke-aws`](https://github.com/MenkeTechnologies/stryke-aws)
 
+### [`Read the Docs`](https://menketechnologies.github.io/stryke-gui/) &middot; [`Engineering Report`](https://menketechnologies.github.io/stryke-gui/report.html)
+
 ---
 
 ## Table of Contents

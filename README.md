@@ -86,7 +86,7 @@ No `cargo`, no `rustc`, no per-target build step on the user's machine.
 Pin a specific release:
 
 ```sh
-s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.19.0
+s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.20.5
 ```
 
 Override the auto-detected host triple (e.g. for musl) via

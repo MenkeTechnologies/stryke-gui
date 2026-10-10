@@ -86,7 +86,7 @@ No `cargo`, no `rustc`, no per-target build step on the user's machine.
 Pin a specific release:
 
 ```sh
-s pkg install -g github.com/MenkeTechnologies/stryke-gui@v0.20.5
+s pkg install -g github.com/MenkeTechnologies/stryke-gui@v<version>
 ```
 
 Override the auto-detected host triple (e.g. for musl) via
@@ -321,7 +321,7 @@ examples/              runnable demos
 t/test_gui.stk         plumbing tests (permission-free FFI surface)
 bin/gui-test.stk       installable smoke-test launcher (~/.stryke/bin/gui-test)
 .github/workflows/
-  ci.yml               cargo check/clippy/test/doc per push
+  ci.yml               cargo check/clippy/fmt/test/doc per push
   release.yml          per-triple cdylib build matrix → GitHub Release
 ```
 
